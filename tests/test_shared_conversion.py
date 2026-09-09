@@ -181,9 +181,20 @@ def test_theorem_optional_title_and_citation_are_preserved() -> None:
 The estimator achieves the stated complexity.
 \end{theorem}
 """
-    marked = mark_proof_environments(source)
-    restored = restore_proof_directives(marked).lstrip()
+    marked, structures = mark_proof_environments(source)
+    assert "BDLPROOFBEGINPLACEHOLDER0000" in marked
+    assert "BDLPROOFENDPLACEHOLDER0000" in marked
+    assert "BDLPROOFBODY" not in marked
+    assert "Giles" not in marked
+    assert "thm:VMLMC" not in marked
+
+    # Simulate harmless whitespace reflow by the intermediate converter.
+    marked = marked.replace(
+        "BDLPROOFBEGINPLACEHOLDER0000\n\n",
+        "BDLPROOFBEGINPLACEHOLDER0000   \n\n",
+    )
+    restored = restore_proof_directives(marked, structures).lstrip()
     assert restored.startswith(":::{prf:theorem} Giles [@giles2008multilevel]")
     assert ":label: thm:VMLMC" in restored
     assert "The estimator achieves the stated complexity." in restored
-    assert r"\begin{theorem}" not in restored
+    assert "BDLPROOF" not in restored
