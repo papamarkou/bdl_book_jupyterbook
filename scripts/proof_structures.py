@@ -23,13 +23,13 @@ PROOF_KINDS = (
 
 @dataclass(frozen=True)
 class ProofStructure:
-    """Metadata protected while MyST converts a theorem-like environment body."""
+    """One theorem-like environment protected from the main MyST pass."""
 
-    begin_token: str
-    end_token: str
+    placeholder: str
     kind: str
     label: str | None
     title: str | None
+    body_tex: str
 
 
 def _clean_title(text: str) -> str:
@@ -59,12 +59,11 @@ def _clean_title(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def mark_proof_environments(text: str) -> tuple[str, list[ProofStructure]]:
-    """Protect theorem boundaries while leaving their bodies for MyST conversion.
+def extract_proof_environments(text: str) -> tuple[str, list[ProofStructure]]:
+    """Replace theorem-like environments with one opaque placeholder each.
 
-    Only opaque begin/end tokens are passed through MyST. Semantic metadata is
-    retained separately in ``ProofStructure`` objects, so MyST cannot reflow or
-    expose it in generated Markdown.
+    The theorem body is converted separately from the main chapter. This avoids
+    relying on a pair of boundary tokens surviving arbitrary MyST block parsing.
     """
     structures: list[ProofStructure] = []
 
@@ -82,27 +81,25 @@ def mark_proof_environments(text: str) -> tuple[str, list[ProofStructure]]:
             if label_match:
                 body = body[label_match.end() :]
 
-            index = len(structures)
-            begin_token = f"BDLPROOFBEGINPLACEHOLDER{index:04d}"
-            end_token = f"BDLPROOFENDPLACEHOLDER{index:04d}"
+            placeholder = f"BDLPROOFPLACEHOLDER{len(structures):04d}"
             structures.append(
                 ProofStructure(
-                    begin_token=begin_token,
-                    end_token=end_token,
+                    placeholder=placeholder,
                     kind=proof_kind,
                     label=label,
                     title=title,
+                    body_tex=body.strip(),
                 )
             )
-            return f"\n\n{begin_token}\n\n{body.strip()}\n\n{end_token}\n\n"
+            return f"\n\n{placeholder}\n\n"
 
         text = pattern.sub(replace, text)
 
     return text, structures
 
 
-def _directive(structure: ProofStructure, body: str) -> str:
-    """Build one native MyST proof directive from protected metadata and body."""
+def proof_directive(structure: ProofStructure, body_markdown: str) -> str:
+    """Build one native MyST proof directive from converted body Markdown."""
     if structure.kind == "proof":
         lines = [":::{prf:proof}", ":enumerated: false"]
     else:
@@ -113,40 +110,5 @@ def _directive(structure: ProofStructure, body: str) -> str:
 
     if structure.label:
         lines.append(f":label: {structure.label}")
-    lines.extend(["", body.strip(), ":::"])
+    lines.extend(["", body_markdown.strip(), ":::"])
     return "\n".join(lines)
-
-
-def _surviving_proof_tokens(text: str) -> list[str]:
-    """Return surviving proof-like token fragments for restoration diagnostics."""
-    return sorted(set(re.findall(r"BDLPROOF[A-Z0-9_-]*", text)))
-
-
-def restore_proof_directives(text: str, structures: list[ProofStructure]) -> str:
-    """Restore protected theorem-like regions as native MyST proof directives."""
-    for structure in structures:
-        start = text.find(structure.begin_token)
-        search_from = start + len(structure.begin_token) if start >= 0 else 0
-        end = text.find(structure.end_token, search_from)
-        if start < 0 or end < 0:
-            missing: list[str] = []
-            if start < 0:
-                missing.append("begin")
-            if end < 0:
-                missing.append("end")
-            surviving = _surviving_proof_tokens(text)
-            nearby = ", ".join(surviving[:20]) if surviving else "none"
-            raise ValueError(
-                "Could not restore proof structure: "
-                f"{structure.kind} label={structure.label!r}; "
-                f"missing={'+'.join(missing)}; surviving proof tokens={nearby}"
-            )
-
-        body_start = start + len(structure.begin_token)
-        body = text[body_start:end]
-        replacement = _directive(structure, body)
-        text = text[:start] + replacement + text[end + len(structure.end_token) :]
-
-    if "BDLPROOF" in text:
-        raise ValueError("Unrestored BDL proof placeholder remained in generated Markdown")
-    return text
