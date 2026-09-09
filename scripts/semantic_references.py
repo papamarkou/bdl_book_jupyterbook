@@ -43,8 +43,6 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
         structures.append(ExtractedStructure(token, markdown))
         return token
 
-    # Preserve the author's capitalization for the full word "equation", while
-    # normalizing the abbreviation "Eq." to the explicit semantic word.
     text = re.sub(
         r"\b([Ee]quation|[Ee]q\.)\s*~?\s*\\(?:eqref|ref)\{([^{}]+)\}",
         lambda m: placeholder(
@@ -58,8 +56,6 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
         text,
     )
 
-    # Section references use the target title where available because web sections
-    # are not guaranteed to expose stable numeric enumeration.
     text = re.sub(
         r"\b(?:Section|Sec\.)\s*~?\s*\\ref\{([^{}]+)\}",
         lambda m: placeholder(
@@ -74,6 +70,14 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
         lambda m: placeholder(f"Figure [](#{m.group(1)})"),
         text,
         flags=re.IGNORECASE,
+    )
+
+    # MyST's generic TeX \ref export can render labels for theorem-like objects
+    # as ``[%s]``. Preserve the semantic object word ourselves instead.
+    text = re.sub(
+        r"\b(Algorithm|Theorem|Proposition|Lemma|Definition|Remark|Assumption)\s*~?\s*\\ref\{([^{}]+)\}",
+        lambda m: placeholder(f"{m.group(1)} [](#{m.group(2)})"),
+        text,
     )
 
     text = re.sub(
