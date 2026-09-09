@@ -54,21 +54,10 @@ def prepare_latex(
 ]:
     """Apply shared structural extraction and LaTeX normalization."""
     text = normalize_pre_extraction(text)
-
-    # Comments are not semantic source. Remove them before any structural
-    # extraction so commented-out structures never create placeholders.
     text = strip_tex_comments(text)
-
-    # Remove purely presentational wrappers before semantic extraction. In the
-    # TeX source these wrappers can span theorem, figure, algorithm, or equation
-    # environments, so leaving them in place can trap placeholders inside a
-    # styling group during the standalone MyST pass.
     text = normalize_typography(text)
 
-    # Extract footnotes before other semantic structures so MyST never generates
-    # unstable opaque footnote identifiers from TeX ``\footnote`` commands.
     text, footnote_structures = extract_footnotes(text)
-
     text, structures = extract_algorithms(text)
 
     text, figure_structures = extract_figures(text)
@@ -77,8 +66,9 @@ def prepare_latex(
     text, reference_structures = extract_references(text)
     structures.extend(reference_structures)
 
-    # Protect each entire theorem-like environment with one placeholder. Its
-    # body is converted in a separate isolated MyST pass during restoration.
+    # Proof environments are removed from the ordinary chapter stream. Their
+    # placeholders are used only as split points in Python and are never sent to
+    # MyST, avoiding any dependence on placeholder survival through block parsing.
     text, proof_structures = extract_proof_environments(text)
 
     text = normalize_latex(text)
@@ -89,70 +79,6 @@ def prepare_latex(
 def _strip_export_frontmatter(text: str) -> str:
     """Remove YAML added by MyST's standalone Markdown export."""
     return re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, count=1, flags=re.DOTALL)
-
-
-def _restore_proofs(text: str, proof_structures: list[ProofStructure]) -> str:
-    """Convert protected proof bodies independently and restore native directives."""
-    for structure in proof_structures:
-        if structure.placeholder not in text:
-            raise ValueError(
-                "Could not restore proof structure: "
-                f"{structure.kind} label={structure.label!r}; placeholder missing"
-            )
-
-        normalized_body = normalize_latex(structure.body_tex)
-        generated_body, _ = run_myst_isolated(normalized_body)
-        body_markdown = _strip_export_frontmatter(generated_body).strip()
-        text = text.replace(
-            structure.placeholder,
-            proof_directive(structure, body_markdown),
-            1,
-        )
-
-    if "BDLPROOFPLACEHOLDER" in text:
-        raise ValueError("Unrestored BDL proof placeholder remained in generated Markdown")
-    return text
-
-
-def clean_generated_markdown(
-    text: str,
-    structures: list[ExtractedStructure],
-    proof_structures: list[ProofStructure],
-    footnote_structures: list[FootnoteStructure],
-    *,
-    title: str,
-    label: str,
-) -> str:
-    """Restore native MyST structures and add one canonical chapter heading."""
-    text = _strip_export_frontmatter(text)
-
-    # Restore proofs first because their independently converted bodies can still
-    # contain figure/reference/algorithm/footnote placeholders extracted earlier.
-    text = _restore_proofs(text, proof_structures)
-
-    for structure in structures:
-        text = text.replace(structure.placeholder, structure.markdown)
-    text = restore_footnotes(text, footnote_structures)
-
-    # Defensive cleanup for exports produced by older conversion passes that
-    # retained a source chapter target or heading.
-    text = re.sub(
-        rf"\A\s*\({re.escape(label)}\)=\s*\n",
-        "",
-        text,
-        count=1,
-    )
-    text = re.sub(
-        rf"\A\s*#+\s+{re.escape(title)}\s*\n",
-        "",
-        text,
-        count=1,
-    )
-
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    if "BDLFOOTNOTEPLACEHOLDER" in text:
-        raise ValueError("Unrestored footnote placeholder remained in generated Markdown")
-    return f"({label})=\n# {title}\n\n{text.lstrip()}"
 
 
 def summarize_myst_output(output: str) -> None:
@@ -180,7 +106,6 @@ def run_myst_isolated(normalized: str) -> tuple[str, str]:
         tex_file = work_dir / "chapter.tex"
         tex_file.write_text(normalized, encoding="utf-8")
 
-        # Preserve source-relative paths used by figures and other chapter assets.
         for child in TEX_ROOT.iterdir():
             if child.is_dir():
                 (work_dir / child.name).symlink_to(child.resolve())
@@ -220,6 +145,83 @@ def run_myst_isolated(normalized: str) -> tuple[str, str]:
         return export_path.read_text(encoding="utf-8"), output
 
 
+def _convert_fragment(tex: str) -> str:
+    """Convert one non-empty normalized TeX fragment to Markdown."""
+    if not tex.strip():
+        return ""
+    generated, _ = run_myst_isolated(tex)
+    return _strip_export_frontmatter(generated).strip()
+
+
+def run_myst_with_proofs(normalized: str, proof_structures: list[ProofStructure]) -> str:
+    """Convert a chapter while keeping proof placeholders out of MyST entirely."""
+    if not proof_structures:
+        return _convert_fragment(normalized)
+
+    by_placeholder = {structure.placeholder: structure for structure in proof_structures}
+    placeholder_pattern = re.compile(
+        "(" + "|".join(re.escape(key) for key in by_placeholder) + ")"
+    )
+    pieces = placeholder_pattern.split(normalized)
+    markdown_parts: list[str] = []
+    seen: set[str] = set()
+
+    for piece in pieces:
+        structure = by_placeholder.get(piece)
+        if structure is None:
+            converted = _convert_fragment(piece)
+            if converted:
+                markdown_parts.append(converted)
+            continue
+
+        seen.add(piece)
+        normalized_body = normalize_latex(structure.body_tex)
+        body_markdown = _convert_fragment(normalized_body)
+        markdown_parts.append(proof_directive(structure, body_markdown))
+
+    missing = [s.placeholder for s in proof_structures if s.placeholder not in seen]
+    if missing:
+        raise ValueError(f"Proof split placeholders missing before MyST conversion: {missing}")
+
+    return "\n\n".join(part for part in markdown_parts if part.strip())
+
+
+def clean_generated_markdown(
+    text: str,
+    structures: list[ExtractedStructure],
+    footnote_structures: list[FootnoteStructure],
+    *,
+    title: str,
+    label: str,
+) -> str:
+    """Restore native MyST structures and add one canonical chapter heading."""
+    text = _strip_export_frontmatter(text)
+
+    for structure in structures:
+        text = text.replace(structure.placeholder, structure.markdown)
+    text = restore_footnotes(text, footnote_structures)
+
+    text = re.sub(
+        rf"\A\s*\({re.escape(label)}\)=\s*\n",
+        "",
+        text,
+        count=1,
+    )
+    text = re.sub(
+        rf"\A\s*#+\s+{re.escape(title)}\s*\n",
+        "",
+        text,
+        count=1,
+    )
+
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    if "BDLPROOFPLACEHOLDER" in text:
+        raise ValueError("Unrestored proof placeholder remained in generated Markdown")
+    if "BDLFOOTNOTEPLACEHOLDER" in text:
+        raise ValueError("Unrestored footnote placeholder remained in generated Markdown")
+    return f"({label})=\n# {title}\n\n{text.lstrip()}"
+
+
 def _source_image_prefix(source_dir: Path) -> str:
     """Return the TeX-root-relative figure prefix used in generated Markdown."""
     relative = source_dir.resolve().relative_to(TEX_ROOT.resolve())
@@ -233,11 +235,7 @@ def copy_and_rewrite_images(
     output_path: Path,
     asset_slug: str,
 ) -> str:
-    """Copy chapter figures into the book and rewrite generated image paths.
-
-    When the TeX source references a PDF, prefer a same-stem web image if the
-    source repository provides one. This avoids runtime PDF rasterization.
-    """
+    """Copy chapter figures into the book and rewrite generated image paths."""
     source_fig_dir = source_dir / "fig"
     if not source_fig_dir.exists():
         return markdown
@@ -273,12 +271,11 @@ def convert_chapter(config: ChapterConfig) -> None:
     """Run the complete shared TeX-to-MyST conversion pipeline for one chapter."""
     source = config.input_path.read_text(encoding="utf-8")
     normalized, structures, proof_structures, footnote_structures = prepare_latex(source)
-    generated, _ = run_myst_isolated(normalized)
+    generated = run_myst_with_proofs(normalized, proof_structures)
 
     markdown = clean_generated_markdown(
         generated,
         structures,
-        proof_structures,
         footnote_structures,
         title=config.title,
         label=config.label,
