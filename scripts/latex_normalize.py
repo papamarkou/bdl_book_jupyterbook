@@ -152,6 +152,29 @@ def _replace_group_declaration(text: str, declaration: str, render: Callable[[st
     return "".join(pieces)
 
 
+def _strip_grouped_color(text: str) -> str:
+    r"""Remove ``{\color{...} ...}`` styling while preserving the group body."""
+    pieces: list[str] = []
+    pos = 0
+    needle = r"{\color"
+    while True:
+        group_pos = text.find(needle, pos)
+        if group_pos < 0:
+            pieces.append(text[pos:])
+            break
+        pieces.append(text[pos:group_pos])
+        try:
+            group, end = _parse_braced(text, group_pos)
+            _, cursor = _parse_braced(group, len(r"\color"))
+        except ValueError:
+            pieces.append(text[group_pos : group_pos + 1])
+            pos = group_pos + 1
+            continue
+        pieces.append(group[cursor:].lstrip())
+        pos = end
+    return "".join(pieces)
+
+
 def normalize_indicator(text: str) -> str:
     r"""Expand the book's indicator-function macro to standard LaTeX."""
     text = re.sub(
@@ -272,7 +295,7 @@ def normalize_typography(text: str) -> str:
 
     # Color is purely presentational in the source; preserve its contents only.
     text = _replace_braced_command(text, r"\textcolor", 2, lambda args: args[1])
-    text = _replace_group_declaration(text, r"\color", lambda body: body)
+    text = _strip_grouped_color(text)
 
     # Preserve intended emphasis while replacing legacy declaration syntax with
     # standard LaTeX that MyST already understands.
