@@ -220,6 +220,18 @@ def normalize_capital_tilde(text: str) -> str:
     )
 
 
+def normalize_variance(text: str) -> str:
+    r"""Normalize legacy variance notation to standard LaTeX."""
+    text = text.replace(
+        r"\mathbb{V}\textrm{\emph{ar}}",
+        r"\operatorname{Var}",
+    )
+    return text.replace(
+        r"\mathbb{V}\textrm{ar}",
+        r"\operatorname{Var}",
+    )
+
+
 def _roman_numeral(number: int) -> str:
     """Return a lowercase Roman numeral for a positive integer."""
     if number <= 0:
@@ -256,18 +268,41 @@ def normalize_roman_numerals(text: str) -> str:
     )
 
 
+def _replace_simple_math_macros(text: str) -> str:
+    """Replace simple book macros without merging adjacent TeX control words."""
+    replacements = dict(SIMPLE_MATH_REPLACEMENTS)
+    pattern = re.compile(
+        "|".join(
+            re.escape(source)
+            for source in sorted(replacements, key=len, reverse=True)
+        )
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        replacement = replacements[match.group(0)]
+        if (
+            replacement
+            and replacement[0].isalpha()
+            and match.start() > 0
+            and text[match.start() - 1].isalpha()
+        ):
+            return " " + replacement
+        return replacement
+
+    return pattern.sub(replace, text)
+
+
 def normalize_notation(text: str) -> str:
     """Expand the conservative subset of global book notation macros."""
     text = normalize_indicator(text)
     text = normalize_expectation(text)
     text = normalize_kl(text)
     text = normalize_capital_tilde(text)
+    text = normalize_variance(text)
     text = normalize_roman_numerals(text)
     for source, replacement in COMPOUND_REPLACEMENTS:
         text = text.replace(source, replacement)
-    for source, replacement in SIMPLE_MATH_REPLACEMENTS:
-        text = text.replace(source, replacement)
-    return text
+    return _replace_simple_math_macros(text)
 
 
 def normalize_pre_extraction(text: str) -> str:
