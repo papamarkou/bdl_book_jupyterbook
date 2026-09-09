@@ -97,6 +97,21 @@ def test_full_equation_word_preserves_lowercase() -> None:
     assert "satisfies the equation [](#eq:invariance)" in restored
 
 
+def test_algorithm_and_theorem_references_are_semantic_links() -> None:
+    source = (
+        r"See Algorithm \ref{alg:smc} and Theorem \ref{thm:main}."
+    )
+    converted, structures = extract_references(source)
+    restored = converted
+    for structure in structures:
+        restored = restored.replace(structure.placeholder, structure.markdown)
+
+    assert "Algorithm [](#alg:smc)" in restored
+    assert "Theorem [](#thm:main)" in restored
+    assert "%s" not in restored
+    assert r"\ref" not in restored
+
+
 def test_algorithm2e_aligned_tcp_comment_is_preserved() -> None:
     source = r"""
 \caption{Example}
