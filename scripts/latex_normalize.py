@@ -129,7 +129,7 @@ def _replace_braced_command(
 
 
 def _replace_group_declaration(text: str, declaration: str, render: Callable[[str], str]) -> str:
-    """Replace ``{\declaration ...}`` groups while preserving balanced contents."""
+    r"""Replace ``{\declaration ...}`` groups while preserving balanced contents."""
     pieces: list[str] = []
     pos = 0
     needle = "{" + declaration
