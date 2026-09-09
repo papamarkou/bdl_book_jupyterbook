@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from common import TEX_ROOT
-from latex_normalize import normalize_latex
+from latex_normalize import normalize_latex, normalize_pre_extraction
 from myst_structures import (
     ExtractedStructure,
     extract_algorithms,
@@ -41,6 +41,10 @@ class ChapterConfig:
 
 def prepare_latex(text: str) -> tuple[str, list[ExtractedStructure]]:
     """Apply shared structural extraction and LaTeX normalization."""
+    # Some source-level syntax affects semantic structures that are extracted
+    # before the ordinary MyST LaTeX pass (for example figure width bases).
+    text = normalize_pre_extraction(text)
+
     text, structures = extract_algorithms(text)
 
     text, figure_structures = extract_figures(text)
