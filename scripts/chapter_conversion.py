@@ -19,7 +19,7 @@ from myst_structures import (
     extract_figures,
     normalize_headings_for_latex_pass,
 )
-from proof_structures import mark_proof_environments, restore_proof_directives
+from proof_structures import ProofStructure, mark_proof_environments, restore_proof_directives
 from semantic_references import extract_references
 
 
@@ -38,7 +38,9 @@ class ChapterConfig:
     asset_slug: str
 
 
-def prepare_latex(text: str) -> tuple[str, list[ExtractedStructure]]:
+def prepare_latex(
+    text: str,
+) -> tuple[str, list[ExtractedStructure], list[ProofStructure]]:
     """Apply shared structural extraction and LaTeX normalization."""
     text = normalize_pre_extraction(text)
 
@@ -50,15 +52,16 @@ def prepare_latex(text: str) -> tuple[str, list[ExtractedStructure]]:
     text, reference_structures = extract_references(text)
     structures.extend(reference_structures)
 
-    text = mark_proof_environments(text)
+    text, proof_structures = mark_proof_environments(text)
     text = normalize_latex(text)
     text = normalize_headings_for_latex_pass(text)
-    return text, structures
+    return text, structures, proof_structures
 
 
 def clean_generated_markdown(
     text: str,
     structures: list[ExtractedStructure],
+    proof_structures: list[ProofStructure],
     *,
     title: str,
     label: str,
@@ -68,7 +71,7 @@ def clean_generated_markdown(
 
     for structure in structures:
         text = text.replace(structure.placeholder, structure.markdown)
-    text = restore_proof_directives(text)
+    text = restore_proof_directives(text, proof_structures)
 
     # Defensive cleanup for exports produced by older conversion passes that
     # retained a source chapter target or heading.
@@ -86,6 +89,8 @@ def clean_generated_markdown(
     )
 
     text = re.sub(r"\n{3,}", "\n\n", text)
+    if "BDLPROOF" in text:
+        raise ValueError("Unrestored BDL proof placeholder remained in generated Markdown")
     return f"({label})=\n# {title}\n\n{text.lstrip()}"
 
 
@@ -206,12 +211,13 @@ def copy_and_rewrite_images(
 def convert_chapter(config: ChapterConfig) -> None:
     """Run the complete shared TeX-to-MyST conversion pipeline for one chapter."""
     source = config.input_path.read_text(encoding="utf-8")
-    normalized, structures = prepare_latex(source)
+    normalized, structures, proof_structures = prepare_latex(source)
     generated, _ = run_myst_isolated(normalized)
 
     markdown = clean_generated_markdown(
         generated,
         structures,
+        proof_structures,
         title=config.title,
         label=config.label,
     )
