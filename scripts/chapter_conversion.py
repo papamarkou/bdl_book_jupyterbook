@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from common import TEX_ROOT
+from footnote_structures import FootnoteStructure, extract_footnotes, restore_footnotes
 from latex_normalize import normalize_latex, normalize_pre_extraction
 from myst_structures import (
     ExtractedStructure,
@@ -40,9 +41,18 @@ class ChapterConfig:
 
 def prepare_latex(
     text: str,
-) -> tuple[str, list[ExtractedStructure], list[ProofStructure]]:
+) -> tuple[
+    str,
+    list[ExtractedStructure],
+    list[ProofStructure],
+    list[FootnoteStructure],
+]:
     """Apply shared structural extraction and LaTeX normalization."""
     text = normalize_pre_extraction(text)
+
+    # Extract footnotes before other semantic structures so MyST never generates
+    # unstable opaque footnote identifiers from TeX ``\footnote`` commands.
+    text, footnote_structures = extract_footnotes(text)
 
     text, structures = extract_algorithms(text)
 
@@ -55,13 +65,14 @@ def prepare_latex(
     text, proof_structures = mark_proof_environments(text)
     text = normalize_latex(text)
     text = normalize_headings_for_latex_pass(text)
-    return text, structures, proof_structures
+    return text, structures, proof_structures, footnote_structures
 
 
 def clean_generated_markdown(
     text: str,
     structures: list[ExtractedStructure],
     proof_structures: list[ProofStructure],
+    footnote_structures: list[FootnoteStructure],
     *,
     title: str,
     label: str,
@@ -72,6 +83,7 @@ def clean_generated_markdown(
     for structure in structures:
         text = text.replace(structure.placeholder, structure.markdown)
     text = restore_proof_directives(text, proof_structures)
+    text = restore_footnotes(text, footnote_structures)
 
     # Defensive cleanup for exports produced by older conversion passes that
     # retained a source chapter target or heading.
@@ -91,6 +103,8 @@ def clean_generated_markdown(
     text = re.sub(r"\n{3,}", "\n\n", text)
     if "BDLPROOF" in text:
         raise ValueError("Unrestored BDL proof placeholder remained in generated Markdown")
+    if "BDLFOOTNOTEPLACEHOLDER" in text:
+        raise ValueError("Unrestored footnote placeholder remained in generated Markdown")
     return f"({label})=\n# {title}\n\n{text.lstrip()}"
 
 
@@ -211,13 +225,14 @@ def copy_and_rewrite_images(
 def convert_chapter(config: ChapterConfig) -> None:
     """Run the complete shared TeX-to-MyST conversion pipeline for one chapter."""
     source = config.input_path.read_text(encoding="utf-8")
-    normalized, structures, proof_structures = prepare_latex(source)
+    normalized, structures, proof_structures, footnote_structures = prepare_latex(source)
     generated, _ = run_myst_isolated(normalized)
 
     markdown = clean_generated_markdown(
         generated,
         structures,
         proof_structures,
+        footnote_structures,
         title=config.title,
         label=config.label,
     )
