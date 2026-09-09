@@ -11,7 +11,7 @@ from chapter_conversion import prepare_latex  # noqa: E402
 from footnote_structures import extract_footnotes, restore_footnotes  # noqa: E402
 from latex_normalize import normalize_latex, normalize_notation, normalize_pre_extraction  # noqa: E402
 from myst_structures import algorithm_to_myst, figure_to_myst  # noqa: E402
-from proof_structures import mark_proof_environments, restore_proof_directives  # noqa: E402
+from proof_structures import extract_proof_environments, proof_directive  # noqa: E402
 from semantic_references import extract_references  # noqa: E402
 
 
@@ -183,22 +183,19 @@ def test_theorem_optional_title_and_citation_are_preserved() -> None:
 The estimator achieves the stated complexity.
 \end{theorem}
 """
-    marked, structures = mark_proof_environments(source)
-    assert "BDLPROOFBEGINPLACEHOLDER0000" in marked
-    assert "BDLPROOFENDPLACEHOLDER0000" in marked
-    assert "BDLPROOFBODY" not in marked
-    assert "Giles" not in marked
-    assert "thm:VMLMC" not in marked
+    marked, structures = extract_proof_environments(source)
+    assert marked.strip() == "BDLPROOFPLACEHOLDER0000"
+    assert len(structures) == 1
+    structure = structures[0]
+    assert structure.kind == "theorem"
+    assert structure.label == "thm:VMLMC"
+    assert structure.title == "Giles [@giles2008multilevel]"
+    assert structure.body_tex == "The estimator achieves the stated complexity."
 
-    marked = marked.replace(
-        "BDLPROOFBEGINPLACEHOLDER0000\n\n",
-        "BDLPROOFBEGINPLACEHOLDER0000   \n\n",
-    )
-    restored = restore_proof_directives(marked, structures).lstrip()
+    restored = proof_directive(structure, structure.body_tex)
     assert restored.startswith(":::{prf:theorem} Giles [@giles2008multilevel]")
     assert ":label: thm:VMLMC" in restored
     assert "The estimator achieves the stated complexity." in restored
-    assert "BDLPROOF" not in restored
 
 
 def test_commented_proof_environments_are_ignored_before_extraction() -> None:
@@ -217,6 +214,7 @@ This one is active.
 
     assert len(proof_structures) == 1
     assert proof_structures[0].label == "prop:active"
+    assert proof_structures[0].placeholder == "BDLPROOFPLACEHOLDER0000"
     assert "prop:commented" not in normalized
     assert all("prop:commented" not in structure.markdown for structure in structures)
     assert not footnote_structures
