@@ -117,15 +117,29 @@ def _directive(structure: ProofStructure, body: str) -> str:
     return "\n".join(lines)
 
 
+def _surviving_proof_tokens(text: str) -> list[str]:
+    """Return surviving proof-like token fragments for restoration diagnostics."""
+    return sorted(set(re.findall(r"BDLPROOF[A-Z0-9_-]*", text)))
+
+
 def restore_proof_directives(text: str, structures: list[ProofStructure]) -> str:
     """Restore protected theorem-like regions as native MyST proof directives."""
     for structure in structures:
         start = text.find(structure.begin_token)
-        end = text.find(structure.end_token, start + len(structure.begin_token))
+        search_from = start + len(structure.begin_token) if start >= 0 else 0
+        end = text.find(structure.end_token, search_from)
         if start < 0 or end < 0:
+            missing: list[str] = []
+            if start < 0:
+                missing.append("begin")
+            if end < 0:
+                missing.append("end")
+            surviving = _surviving_proof_tokens(text)
+            nearby = ", ".join(surviving[:20]) if surviving else "none"
             raise ValueError(
                 "Could not restore proof structure: "
-                f"{structure.kind} label={structure.label!r}"
+                f"{structure.kind} label={structure.label!r}; "
+                f"missing={'+'.join(missing)}; surviving proof tokens={nearby}"
             )
 
         body_start = start + len(structure.begin_token)
