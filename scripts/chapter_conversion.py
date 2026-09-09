@@ -17,10 +17,9 @@ from myst_structures import (
     ExtractedStructure,
     extract_algorithms,
     extract_figures,
-    mark_proof_environments,
     normalize_headings_for_latex_pass,
-    restore_extracted_structures,
 )
+from proof_structures import mark_proof_environments, restore_proof_directives
 from semantic_references import extract_references
 
 
@@ -41,8 +40,6 @@ class ChapterConfig:
 
 def prepare_latex(text: str) -> tuple[str, list[ExtractedStructure]]:
     """Apply shared structural extraction and LaTeX normalization."""
-    # Some source-level syntax affects semantic structures that are extracted
-    # before the ordinary MyST LaTeX pass (for example figure width bases).
     text = normalize_pre_extraction(text)
 
     text, structures = extract_algorithms(text)
@@ -68,7 +65,10 @@ def clean_generated_markdown(
 ) -> str:
     """Restore native MyST structures and add one canonical chapter heading."""
     text = re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, count=1, flags=re.DOTALL)
-    text = restore_extracted_structures(text, structures)
+
+    for structure in structures:
+        text = text.replace(structure.placeholder, structure.markdown)
+    text = restore_proof_directives(text)
 
     # Defensive cleanup for exports produced by older conversion passes that
     # retained a source chapter target or heading.
