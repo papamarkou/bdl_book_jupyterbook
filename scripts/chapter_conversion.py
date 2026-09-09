@@ -57,7 +57,13 @@ def prepare_latex(
     text = strip_tex_comments(text)
     text = normalize_typography(text)
 
+    # Footnotes and semantic references are inline structures. Their opaque
+    # placeholders remain inside otherwise balanced TeX fragments during MyST
+    # conversion and are restored afterward.
     text, footnote_structures = extract_footnotes(text)
+
+    # Algorithms and figures are block structures. They are later used as Python
+    # split points so their placeholders are never sent through MyST.
     text, structures = extract_algorithms(text)
 
     text, figure_structures = extract_figures(text)
@@ -66,6 +72,8 @@ def prepare_latex(
     text, reference_structures = extract_references(text)
     structures.extend(reference_structures)
 
+    # Theorem-like blocks are also Python split points and their bodies are
+    # converted independently.
     text, proof_structures = extract_proof_environments(text)
 
     text = normalize_latex(text)
@@ -149,29 +157,42 @@ def _convert_fragment(tex: str, myst_outputs: list[str]) -> str:
     return _strip_export_frontmatter(generated).strip()
 
 
+def _is_block_structure(structure: ExtractedStructure) -> bool:
+    """Return whether a structure must stay outside the MyST fragment stream."""
+    return structure.placeholder.startswith(("BDLALGORITHMPLACEHOLDER", "BDLFIGUREPLACEHOLDER"))
+
+
 def run_myst_with_structures(
     normalized: str,
     structures: list[ExtractedStructure],
     proof_structures: list[ProofStructure],
 ) -> str:
-    """Convert ordinary TeX fragments while resolving semantic structures in Python.
+    """Convert balanced TeX fragments while resolving block structures in Python.
 
-    Algorithms, figures, semantic references, and theorem-like environments are
-    never passed through MyST as opaque placeholders. Their placeholders are used
-    only as split points here, which avoids MyST dropping or rewriting them.
+    Algorithms, figures, and theorem-like environments are block split points and
+    never pass through MyST as placeholders. Semantic references remain inline so
+    splitting cannot separate matching TeX begin/end environments.
     """
-    ordinary = {structure.placeholder: structure.markdown for structure in structures}
+    blocks = {
+        structure.placeholder: structure.markdown
+        for structure in structures
+        if _is_block_structure(structure)
+    }
     proofs = {structure.placeholder: structure for structure in proof_structures}
-    all_placeholders = list(ordinary) + list(proofs)
+    split_placeholders = list(blocks) + list(proofs)
     myst_outputs: list[str] = []
 
-    if not all_placeholders:
+    if not split_placeholders:
         converted = _convert_fragment(normalized, myst_outputs)
         summarize_myst_output("\n".join(myst_outputs))
         return converted
 
     pattern = re.compile(
-        "(" + "|".join(re.escape(key) for key in sorted(all_placeholders, key=len, reverse=True)) + ")"
+        "("
+        + "|".join(
+            re.escape(key) for key in sorted(split_placeholders, key=len, reverse=True)
+        )
+        + ")"
     )
 
     def convert_stream(tex: str) -> str:
@@ -180,8 +201,8 @@ def run_myst_with_structures(
             if not piece:
                 continue
 
-            if piece in ordinary:
-                parts.append(ordinary[piece])
+            if piece in blocks:
+                parts.append(blocks[piece])
                 continue
 
             proof = proofs.get(piece)
@@ -200,22 +221,30 @@ def run_myst_with_structures(
     converted = convert_stream(normalized)
     summarize_myst_output("\n".join(myst_outputs))
 
-    for placeholder in all_placeholders:
+    for placeholder in split_placeholders:
         if placeholder in converted:
-            raise ValueError(f"Unrestored semantic placeholder remained: {placeholder}")
+            raise ValueError(f"Unrestored block placeholder remained: {placeholder}")
 
     return converted
 
 
 def clean_generated_markdown(
     text: str,
+    structures: list[ExtractedStructure],
     footnote_structures: list[FootnoteStructure],
     *,
     title: str,
     label: str,
 ) -> str:
-    """Restore footnotes and add one canonical chapter heading."""
+    """Restore inline semantic structures and add one canonical chapter heading."""
     text = _strip_export_frontmatter(text)
+
+    # Block structures were already inserted by run_myst_with_structures. Only
+    # inline semantic reference placeholders should remain for restoration here.
+    for structure in structures:
+        if structure.placeholder.startswith("BDLREFERENCEPLACEHOLDER"):
+            text = text.replace(structure.placeholder, structure.markdown)
+
     text = restore_footnotes(text, footnote_structures)
 
     # Extracted algorithm bodies can contain TeX's non-breaking-space marker
@@ -240,16 +269,15 @@ def clean_generated_markdown(
     )
 
     text = re.sub(r"\n{3,}", "\n\n", text)
-    if "BDLPROOFPLACEHOLDER" in text:
-        raise ValueError("Unrestored proof placeholder remained in generated Markdown")
-    if "BDLREFERENCEPLACEHOLDER" in text:
-        raise ValueError("Unrestored reference placeholder remained in generated Markdown")
-    if "BDLALGORITHMPLACEHOLDER" in text:
-        raise ValueError("Unrestored algorithm placeholder remained in generated Markdown")
-    if "BDLFIGUREPLACEHOLDER" in text:
-        raise ValueError("Unrestored figure placeholder remained in generated Markdown")
-    if "BDLFOOTNOTEPLACEHOLDER" in text:
-        raise ValueError("Unrestored footnote placeholder remained in generated Markdown")
+    for marker in (
+        "BDLPROOFPLACEHOLDER",
+        "BDLREFERENCEPLACEHOLDER",
+        "BDLALGORITHMPLACEHOLDER",
+        "BDLFIGUREPLACEHOLDER",
+        "BDLFOOTNOTEPLACEHOLDER",
+    ):
+        if marker in text:
+            raise ValueError(f"Unrestored placeholder remained in generated Markdown: {marker}")
     return f"({label})=\n# {title}\n\n{text.lstrip()}"
 
 
@@ -306,6 +334,7 @@ def convert_chapter(config: ChapterConfig) -> None:
 
     markdown = clean_generated_markdown(
         generated,
+        structures,
         footnote_structures,
         title=config.title,
         label=config.label,
