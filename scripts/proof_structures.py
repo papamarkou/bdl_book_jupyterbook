@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from latex_normalize import normalize_notation
 
@@ -20,12 +21,25 @@ PROOF_KINDS = (
 )
 
 
+@dataclass(frozen=True)
+class ProofStructure:
+    """Metadata protected while MyST converts a theorem-like environment body."""
+
+    begin_token: str
+    end_token: str
+    kind: str
+    label: str | None
+    title: str | None
+
+
 def _clean_title(text: str) -> str:
     """Convert conservative inline TeX used in theorem titles to MyST Markdown."""
     text = normalize_notation(text)
     text = re.sub(
         r"\\(?:cite|citep)\{([^{}]+)\}",
-        lambda match: "[" + "; ".join(f"@{key.strip()}" for key in match.group(1).split(",")) + "]",
+        lambda match: "[" + "; ".join(
+            f"@{key.strip()}" for key in match.group(1).split(",") if key.strip()
+        ) + "]",
         text,
     )
     text = re.sub(
@@ -33,7 +47,9 @@ def _clean_title(text: str) -> str:
         lambda match: (
             f"@{match.group(1).strip()}"
             if "," not in match.group(1)
-            else "[" + "; ".join(f"@{key.strip()}" for key in match.group(1).split(",")) + "]"
+            else "[" + "; ".join(
+                f"@{key.strip()}" for key in match.group(1).split(",") if key.strip()
+            ) + "]"
         ),
         text,
     )
@@ -43,12 +59,15 @@ def _clean_title(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def mark_proof_environments(text: str) -> str:
-    """Mark theorem-like boundaries before MyST's standalone LaTeX conversion.
+def mark_proof_environments(text: str) -> tuple[str, list[ProofStructure]]:
+    """Protect theorem boundaries while leaving their bodies for MyST conversion.
 
-    Optional theorem titles are retained explicitly so they can become native
-    proof-directive titles after the LaTeX pass.
+    Only opaque begin/end tokens are passed through MyST. Semantic metadata is
+    retained separately in ``ProofStructure`` objects, so MyST cannot reflow or
+    expose it in generated Markdown.
     """
+    structures: list[ProofStructure] = []
+
     for kind in PROOF_KINDS:
         pattern = re.compile(
             rf"\\begin\{{{kind}\}}(?:\[([^\]]*)\])?(.*?)\\end\{{{kind}\}}",
@@ -56,55 +75,64 @@ def mark_proof_environments(text: str) -> str:
         )
 
         def replace(match: re.Match[str], proof_kind: str = kind) -> str:
-            title = match.group(1) or ""
+            title = _clean_title(match.group(1)) if match.group(1) else None
             body = match.group(2)
             label_match = re.match(r"\s*\\label\{([^{}]+)\}\s*", body)
-            label = label_match.group(1) if label_match else ""
+            label = label_match.group(1) if label_match else None
             if label_match:
                 body = body[label_match.end() :]
 
-            lines = [f"BDLPROOFBEGIN {proof_kind}"]
-            if label:
-                lines.append(f"BDLPROOFLABEL {label}")
-            if title:
-                lines.append(f"BDLPROOFTITLE {_clean_title(title)}")
-            lines.extend(["BDLPROOFBODY", body.strip(), f"BDLPROOFEND {proof_kind}"])
-            return "\n\n" + "\n".join(lines) + "\n\n"
+            index = len(structures)
+            begin_token = f"BDLPROOFBEGINPLACEHOLDER{index:04d}"
+            end_token = f"BDLPROOFENDPLACEHOLDER{index:04d}"
+            structures.append(
+                ProofStructure(
+                    begin_token=begin_token,
+                    end_token=end_token,
+                    kind=proof_kind,
+                    label=label,
+                    title=title,
+                )
+            )
+            return f"\n\n{begin_token}\n\n{body.strip()}\n\n{end_token}\n\n"
 
         text = pattern.sub(replace, text)
-    return text
+
+    return text, structures
 
 
-def restore_proof_directives(text: str) -> str:
-    """Turn semantic proof markers into MyST's native proof directives."""
-    pattern = re.compile(
-        r"BDLPROOFBEGIN[ \t]+(example|proposition|definition|lemma|theorem|remark|assumption|proof)\s*\n"
-        r"(?:BDLPROOFLABEL[ \t]+([^\n]+)\s*\n)?"
-        r"(?:BDLPROOFTITLE[ \t]+([^\n]+)\s*\n)?"
-        r"BDLPROOFBODY\s*\n(.*?)\n\s*BDLPROOFEND[ \t]+\1",
-        flags=re.DOTALL,
-    )
+def _directive(structure: ProofStructure, body: str) -> str:
+    """Build one native MyST proof directive from protected metadata and body."""
+    if structure.kind == "proof":
+        lines = [":::{prf:proof}", ":enumerated: false"]
+    else:
+        heading = f":::{{prf:{structure.kind}}}"
+        if structure.title:
+            heading += f" {structure.title}"
+        lines = [heading]
 
-    def replace(match: re.Match[str]) -> str:
-        kind = match.group(1)
-        label = match.group(2).strip() if match.group(2) else None
-        title = match.group(3).strip() if match.group(3) else None
-        body = match.group(4).strip()
+    if structure.label:
+        lines.append(f":label: {structure.label}")
+    lines.extend(["", body.strip(), ":::"])
+    return "\n".join(lines)
 
-        if kind == "proof":
-            lines = [":::{prf:proof}", ":enumerated: false"]
-        else:
-            heading = f":::{'{'}prf:{kind}{'}'}"
-            if title:
-                heading += f" {title}"
-            lines = [heading]
-        if label:
-            lines.append(f":label: {label}")
-        lines.extend(["", body, ":::"])
-        return "\n".join(lines)
 
-    previous = None
-    while previous != text:
-        previous = text
-        text = pattern.sub(replace, text)
+def restore_proof_directives(text: str, structures: list[ProofStructure]) -> str:
+    """Restore protected theorem-like regions as native MyST proof directives."""
+    for structure in structures:
+        start = text.find(structure.begin_token)
+        end = text.find(structure.end_token, start + len(structure.begin_token))
+        if start < 0 or end < 0:
+            raise ValueError(
+                "Could not restore proof structure: "
+                f"{structure.kind} label={structure.label!r}"
+            )
+
+        body_start = start + len(structure.begin_token)
+        body = text[body_start:end]
+        replacement = _directive(structure, body)
+        text = text[:start] + replacement + text[end + len(structure.end_token) :]
+
+    if "BDLPROOF" in text:
+        raise ValueError("Unrestored BDL proof placeholder remained in generated Markdown")
     return text
