@@ -13,7 +13,7 @@ from pathlib import Path
 
 from common import TEX_ROOT
 from footnote_structures import FootnoteStructure, extract_footnotes, restore_footnotes
-from latex_normalize import normalize_latex, normalize_pre_extraction
+from latex_normalize import normalize_latex, normalize_pre_extraction, strip_tex_comments
 from myst_structures import (
     ExtractedStructure,
     extract_algorithms,
@@ -49,6 +49,11 @@ def prepare_latex(
 ]:
     """Apply shared structural extraction and LaTeX normalization."""
     text = normalize_pre_extraction(text)
+
+    # Comments are not semantic source. Remove them before *any* structural
+    # extraction so commented-out figures, footnotes, algorithms, and theorem
+    # environments can never create placeholders or metadata records.
+    text = strip_tex_comments(text)
 
     # Extract footnotes before other semantic structures so MyST never generates
     # unstable opaque footnote identifiers from TeX ``\footnote`` commands.
