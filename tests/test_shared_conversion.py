@@ -7,6 +7,7 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from footnote_structures import extract_footnotes, restore_footnotes  # noqa: E402
 from latex_normalize import normalize_latex, normalize_notation, normalize_pre_extraction  # noqa: E402
 from myst_structures import algorithm_to_myst, figure_to_myst  # noqa: E402
 from proof_structures import mark_proof_environments, restore_proof_directives  # noqa: E402
@@ -188,7 +189,6 @@ The estimator achieves the stated complexity.
     assert "Giles" not in marked
     assert "thm:VMLMC" not in marked
 
-    # Simulate harmless whitespace reflow by the intermediate converter.
     marked = marked.replace(
         "BDLPROOFBEGINPLACEHOLDER0000\n\n",
         "BDLPROOFBEGINPLACEHOLDER0000   \n\n",
@@ -198,3 +198,29 @@ The estimator achieves the stated complexity.
     assert ":label: thm:VMLMC" in restored
     assert "The estimator achieves the stated complexity." in restored
     assert "BDLPROOF" not in restored
+
+
+def test_footnotes_are_deterministic_and_not_duplicated() -> None:
+    source = (
+        r"Approximate posteriors can be overconfident"
+        r"\footnote{This occurs when the approximation is too narrow.}, particularly."
+    )
+    marked, structures = extract_footnotes(source)
+    assert marked == (
+        "Approximate posteriors can be overconfident"
+        "BDLFOOTNOTEPLACEHOLDER0001, particularly."
+    )
+    assert len(structures) == 1
+    assert structures[0].identifier == "footnote-1"
+
+    restored = restore_footnotes(marked, structures)
+    assert restored.count("[^footnote-1]") == 2
+    assert (
+        "Approximate posteriors can be overconfident[^footnote-1], particularly."
+        in restored
+    )
+    assert (
+        "[^footnote-1]: This occurs when the approximation is too narrow."
+        in restored
+    )
+    assert "BDLFOOTNOTEPLACEHOLDER" not in restored
