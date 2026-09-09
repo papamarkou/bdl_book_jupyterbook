@@ -7,8 +7,9 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from latex_normalize import normalize_notation  # noqa: E402
+from latex_normalize import normalize_latex, normalize_notation, normalize_pre_extraction  # noqa: E402
 from myst_structures import algorithm_to_myst, figure_to_myst  # noqa: E402
+from proof_structures import mark_proof_environments, restore_proof_directives  # noqa: E402
 from semantic_references import extract_references  # noqa: E402
 
 
@@ -22,6 +23,11 @@ def test_shared_gaussian_and_transpose_macros_are_expanded() -> None:
     source = r"\bm{r}\transpose \sim \N(\bm{0},\bm{I})"
     converted = normalize_notation(source)
     assert r"\bm{r}^{\top} \sim \mathcal{N}(\bm{0},\bm{I})" == converted
+
+
+def test_chapter4_sampling_macros_are_expanded() -> None:
+    source = r"\numPar, \idxPar, \sX"
+    assert normalize_notation(source) == r"R, r, \mathsf{X}"
 
 
 def test_roman_numerals_are_literal_text() -> None:
@@ -48,6 +54,16 @@ def test_argmin_and_argmax_are_expanded() -> None:
     converted = normalize_notation(source)
     assert r"\operatorname*{arg\,min}_{\psi}" in converted
     assert r"\operatorname*{arg\,max}_{\theta}" in converted
+
+
+def test_nonsemantic_typography_is_normalized() -> None:
+    source = r"\noindent{\bf Regression. } \textcolor{black}{Body} {\color{black} More}"
+    converted = normalize_latex(source)
+    assert converted == r"\textbf{Regression. } Body More"
+    assert r"\noindent" not in converted
+    assert r"\textcolor" not in converted
+    assert r"\color" not in converted
+    assert r"{\bf" not in converted
 
 
 def test_abbreviated_semantic_references_are_normalized() -> None:
@@ -134,6 +150,17 @@ def test_figure_width_accepts_linewidth() -> None:
     assert ":width: 80%" in converted
 
 
+def test_figure_width_accepts_columnwidth_through_shared_prepass() -> None:
+    source = r"""
+\centering
+\includegraphics[width=0.45\columnwidth]{sampling_methods/example/fig/panel.png}
+\caption{Example figure.}
+\label{fig:columnwidth}
+"""
+    converted = figure_to_myst(normalize_pre_extraction(source))
+    assert ":width: 45%" in converted
+
+
 def test_citations_are_preserved_inside_extracted_caption() -> None:
     source = r"""
 \centering
@@ -145,3 +172,18 @@ def test_citations_are_preserved_inside_extracted_caption() -> None:
     assert "[@smith2020]" in converted
     assert "@jones2021" in converted
     assert r"\cite" not in converted
+
+
+def test_theorem_optional_title_and_citation_are_preserved() -> None:
+    source = r"""
+\begin{theorem}[Giles \citep{giles2008multilevel}]
+\label{thm:VMLMC}
+The estimator achieves the stated complexity.
+\end{theorem}
+"""
+    marked = mark_proof_environments(source)
+    restored = restore_proof_directives(marked)
+    assert restored.startswith("\n\n:::{prf:theorem} Giles [@giles2008multilevel]")
+    assert ":label: thm:VMLMC" in restored
+    assert "The estimator achieves the stated complexity." in restored
+    assert r"\begin{theorem}" not in restored
