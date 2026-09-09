@@ -7,6 +7,7 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from chapter_conversion import prepare_latex  # noqa: E402
 from footnote_structures import extract_footnotes, restore_footnotes  # noqa: E402
 from latex_normalize import normalize_latex, normalize_notation, normalize_pre_extraction  # noqa: E402
 from myst_structures import algorithm_to_myst, figure_to_myst  # noqa: E402
@@ -198,6 +199,27 @@ The estimator achieves the stated complexity.
     assert ":label: thm:VMLMC" in restored
     assert "The estimator achieves the stated complexity." in restored
     assert "BDLPROOF" not in restored
+
+
+def test_commented_proof_environments_are_ignored_before_extraction() -> None:
+    source = r"""
+% \begin{proposition}
+% \label{prop:commented}
+% This must not become a proof structure.
+% \end{proposition}
+
+\begin{proposition}
+\label{prop:active}
+This one is active.
+\end{proposition}
+"""
+    normalized, structures, proof_structures, footnote_structures = prepare_latex(source)
+
+    assert len(proof_structures) == 1
+    assert proof_structures[0].label == "prop:active"
+    assert "prop:commented" not in normalized
+    assert all("prop:commented" not in structure.markdown for structure in structures)
+    assert not footnote_structures
 
 
 def test_footnotes_are_deterministic_and_not_duplicated() -> None:
