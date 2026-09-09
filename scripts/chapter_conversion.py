@@ -20,7 +20,7 @@ from myst_structures import (
     extract_figures,
     normalize_headings_for_latex_pass,
 )
-from proof_structures import ProofStructure, mark_proof_environments, restore_proof_directives
+from proof_structures import ProofStructure, extract_proof_environments, proof_directive
 from semantic_references import extract_references
 
 
@@ -67,10 +67,41 @@ def prepare_latex(
     text, reference_structures = extract_references(text)
     structures.extend(reference_structures)
 
-    text, proof_structures = mark_proof_environments(text)
+    # Protect each entire theorem-like environment with one placeholder. Its
+    # body is converted in a separate isolated MyST pass during restoration.
+    text, proof_structures = extract_proof_environments(text)
+
     text = normalize_latex(text)
     text = normalize_headings_for_latex_pass(text)
     return text, structures, proof_structures, footnote_structures
+
+
+def _strip_export_frontmatter(text: str) -> str:
+    """Remove YAML added by MyST's standalone Markdown export."""
+    return re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, count=1, flags=re.DOTALL)
+
+
+def _restore_proofs(text: str, proof_structures: list[ProofStructure]) -> str:
+    """Convert protected proof bodies independently and restore native directives."""
+    for structure in proof_structures:
+        if structure.placeholder not in text:
+            raise ValueError(
+                "Could not restore proof structure: "
+                f"{structure.kind} label={structure.label!r}; placeholder missing"
+            )
+
+        normalized_body = normalize_latex(structure.body_tex)
+        generated_body, _ = run_myst_isolated(normalized_body)
+        body_markdown = _strip_export_frontmatter(generated_body).strip()
+        text = text.replace(
+            structure.placeholder,
+            proof_directive(structure, body_markdown),
+            1,
+        )
+
+    if "BDLPROOFPLACEHOLDER" in text:
+        raise ValueError("Unrestored BDL proof placeholder remained in generated Markdown")
+    return text
 
 
 def clean_generated_markdown(
@@ -83,11 +114,14 @@ def clean_generated_markdown(
     label: str,
 ) -> str:
     """Restore native MyST structures and add one canonical chapter heading."""
-    text = re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, count=1, flags=re.DOTALL)
+    text = _strip_export_frontmatter(text)
+
+    # Restore proofs first because their independently converted bodies can still
+    # contain figure/reference/algorithm/footnote placeholders extracted earlier.
+    text = _restore_proofs(text, proof_structures)
 
     for structure in structures:
         text = text.replace(structure.placeholder, structure.markdown)
-    text = restore_proof_directives(text, proof_structures)
     text = restore_footnotes(text, footnote_structures)
 
     # Defensive cleanup for exports produced by older conversion passes that
@@ -106,8 +140,6 @@ def clean_generated_markdown(
     )
 
     text = re.sub(r"\n{3,}", "\n\n", text)
-    if "BDLPROOF" in text:
-        raise ValueError("Unrestored BDL proof placeholder remained in generated Markdown")
     if "BDLFOOTNOTEPLACEHOLDER" in text:
         raise ValueError("Unrestored footnote placeholder remained in generated Markdown")
     return f"({label})=\n# {title}\n\n{text.lstrip()}"
