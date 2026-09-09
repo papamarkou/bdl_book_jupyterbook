@@ -79,7 +79,7 @@ def _strip_export_frontmatter(text: str) -> str:
 
 
 def summarize_myst_output(output: str) -> None:
-    """Print a compact summary of diagnostics for the normalized TeX file."""
+    """Print one compact aggregate summary of MyST diagnostics for a chapter."""
     diagnostics = [
         line.strip() for line in output.splitlines() if "Unhandled TEX conversion" in line
     ]
@@ -121,7 +121,6 @@ def run_myst_isolated(normalized: str) -> tuple[str, str]:
                 )
         except subprocess.TimeoutExpired as exc:
             output = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
-            summarize_myst_output(output)
             tail = "\n".join(output.splitlines()[-20:])
             raise RuntimeError(
                 f"MyST conversion exceeded {MYST_TIMEOUT_SECONDS} seconds. "
@@ -129,7 +128,6 @@ def run_myst_isolated(normalized: str) -> tuple[str, str]:
             ) from exc
 
         output = log_path.read_text(encoding="utf-8")
-        summarize_myst_output(output)
 
         if result.returncode != 0:
             tail = "\n".join(output.splitlines()[-20:])
@@ -142,11 +140,12 @@ def run_myst_isolated(normalized: str) -> tuple[str, str]:
         return export_path.read_text(encoding="utf-8"), output
 
 
-def _convert_fragment(tex: str) -> str:
+def _convert_fragment(tex: str, myst_outputs: list[str]) -> str:
     """Convert one non-empty normalized TeX fragment to Markdown."""
     if not tex.strip():
         return ""
-    generated, _ = run_myst_isolated(tex)
+    generated, output = run_myst_isolated(tex)
+    myst_outputs.append(output)
     return _strip_export_frontmatter(generated).strip()
 
 
@@ -164,9 +163,12 @@ def run_myst_with_structures(
     ordinary = {structure.placeholder: structure.markdown for structure in structures}
     proofs = {structure.placeholder: structure for structure in proof_structures}
     all_placeholders = list(ordinary) + list(proofs)
+    myst_outputs: list[str] = []
 
     if not all_placeholders:
-        return _convert_fragment(normalized)
+        converted = _convert_fragment(normalized, myst_outputs)
+        summarize_myst_output("\n".join(myst_outputs))
+        return converted
 
     pattern = re.compile(
         "(" + "|".join(re.escape(key) for key in sorted(all_placeholders, key=len, reverse=True)) + ")"
@@ -189,13 +191,14 @@ def run_myst_with_structures(
                 parts.append(proof_directive(proof, body_markdown))
                 continue
 
-            converted = _convert_fragment(piece)
+            converted = _convert_fragment(piece, myst_outputs)
             if converted:
                 parts.append(converted)
 
         return "\n\n".join(part for part in parts if part.strip())
 
     converted = convert_stream(normalized)
+    summarize_myst_output("\n".join(myst_outputs))
 
     for placeholder in all_placeholders:
         if placeholder in converted:
@@ -214,6 +217,14 @@ def clean_generated_markdown(
     """Restore footnotes and add one canonical chapter heading."""
     text = _strip_export_frontmatter(text)
     text = restore_footnotes(text, footnote_structures)
+
+    # Extracted algorithm bodies can contain TeX's non-breaking-space marker
+    # immediately before an already converted Markdown reference.
+    text = re.sub(
+        r"\b(Algorithm|Theorem|Proposition|Lemma|Definition|Remark|Assumption)~(?=\[\]\(#)",
+        r"\1 ",
+        text,
+    )
 
     text = re.sub(
         rf"\A\s*\({re.escape(label)}\)=\s*\n",
