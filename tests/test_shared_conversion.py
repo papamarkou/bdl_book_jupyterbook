@@ -182,8 +182,8 @@ The estimator achieves the stated complexity.
 \end{theorem}
 """
     marked = mark_proof_environments(source)
-    restored = restore_proof_directives(marked)
-    assert restored.startswith("\n\n:::{prf:theorem} Giles [@giles2008multilevel]")
+    restored = restore_proof_directives(marked).lstrip()
+    assert restored.startswith(":::{prf:theorem} Giles [@giles2008multilevel]")
     assert ":label: thm:VMLMC" in restored
     assert "The estimator achieves the stated complexity." in restored
     assert r"\begin{theorem}" not in restored
