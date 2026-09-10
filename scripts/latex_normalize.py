@@ -244,27 +244,15 @@ def normalize_variance(text: str) -> str:
 
 
 def normalize_eqnarray(text: str) -> str:
-    r"""Replace legacy ``eqnarray`` with standard ``align`` environments.
+    r"""Replace legacy ``eqnarray`` environments with ``align`` equivalents.
 
-    ``eqnarray`` uses three alignment columns, commonly written ``lhs & = & rhs``
-    or ``lhs & := & rhs``. ``align`` needs only the relation alignment point, so
-    collapse the two ampersands around common relation operators while preserving
-    labels, ``\nonumber``, line breaks, and starred/numbered semantics.
+    This deliberately changes only the environment names. Existing alignment
+    markers, labels, ``\nonumber`` commands, and line breaks are preserved.
     """
-    pattern = re.compile(
-        r"\begin\{eqnarray(?P<star>\*)?\}(?P<body>.*?)\end\{eqnarray(?P=star)\}",
-        re.DOTALL,
-    )
-    relation = re.compile(
-        r"&\s*(?P<op>:=|=|<=|>=|<|>|\(?:leq|geq|approx|sim|propto|to|rightarrow|leftarrow|leftrightarrow))\s*&"
-    )
-
-    def replace(match: re.Match[str]) -> str:
-        star = match.group("star") or ""
-        body = relation.sub(lambda rel: f"& {rel.group('op')} ", match.group("body"))
-        return rf"\begin{{align{star}}}{body}\end{{align{star}}}"
-
-    return pattern.sub(replace, text)
+    text = text.replace(r"\begin{eqnarray*}", r"\begin{align*}")
+    text = text.replace(r"\end{eqnarray*}", r"\end{align*}")
+    text = text.replace(r"\begin{eqnarray}", r"\begin{align}")
+    return text.replace(r"\end{eqnarray}", r"\end{align}")
 
 
 def _roman_numeral(number: int) -> str:
