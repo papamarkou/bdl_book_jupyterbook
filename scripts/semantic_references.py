@@ -72,11 +72,12 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
         flags=re.IGNORECASE,
     )
 
-    # MyST's generic TeX \ref export can render labels for theorem-like objects
-    # as ``[%s]``. Preserve the semantic object word ourselves instead.
+    # MyST proof cross-references already render their semantic object prefix
+    # (for example, ``Algorithm 2`` or ``Theorem 1``). Preserve the reference
+    # target but do not duplicate that prefix in surrounding Markdown.
     text = re.sub(
-        r"\b(Algorithm|Theorem|Proposition|Lemma|Definition|Remark|Assumption)\s*~?\s*\\ref\{([^{}]+)\}",
-        lambda m: placeholder(f"{m.group(1)} [](#{m.group(2)})"),
+        r"\b(?:Algorithm|Theorem|Proposition|Lemma|Definition|Remark|Assumption)\s*~?\s*\\ref\{([^{}]+)\}",
+        lambda m: placeholder(f"[](#{m.group(1)})"),
         text,
     )
 
