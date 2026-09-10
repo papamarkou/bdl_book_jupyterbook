@@ -73,8 +73,8 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
     )
 
     # MyST proof cross-references already render their semantic object prefix
-    # (for example, ``Algorithm 2`` or ``Theorem 1``). Preserve the reference
-    # target but do not duplicate that prefix in surrounding Markdown.
+    # (for example, ``Algorithm 2`` or ``Theorem 1``). Preserve the target but
+    # do not duplicate that prefix in surrounding Markdown.
     text = re.sub(
         r"\b(?:Algorithm|Theorem|Proposition|Lemma|Definition|Remark|Assumption)\s*~?\s*\\ref\{([^{}]+)\}",
         lambda m: placeholder(f"[](#{m.group(1)})"),
@@ -86,4 +86,14 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
         lambda m: placeholder(f"{m.group(1)} [](#{m.group(2)})"),
         text,
     )
+
+    # A TeX group used only to scope ordinary prose has no semantic meaning in
+    # Markdown. Once its semantic reference is protected by a placeholder, a
+    # simple one-line group can be unwrapped safely without touching math groups.
+    text = re.sub(
+        r"\{([^{}\n]*BDLREFERENCEPLACEHOLDER\d{4}[^{}\n]*)\}",
+        r"\1",
+        text,
+    )
+
     return text, structures
