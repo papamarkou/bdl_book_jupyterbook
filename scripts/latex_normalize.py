@@ -157,7 +157,8 @@ def _normalize_em_declarations(text: str, *, inside_emphasis: bool = False) -> s
 
     Nested ``\em`` declarations are redundant in TeX. Flatten them while already
     inside emphasis so downstream Markdown conversion cannot create mismatched
-    nested emphasis delimiters.
+    nested emphasis delimiters. Respect TeX control-word boundaries so commands
+    such as ``\emph`` are never mistaken for the legacy ``\em`` declaration.
     """
     pieces: list[str] = []
     pos = 0
@@ -167,6 +168,13 @@ def _normalize_em_declarations(text: str, *, inside_emphasis: bool = False) -> s
         if group_pos < 0:
             pieces.append(text[pos:])
             break
+
+        after_em = group_pos + len(needle)
+        if after_em < len(text) and text[after_em].isalpha():
+            pieces.append(text[pos:after_em])
+            pos = after_em
+            continue
+
         pieces.append(text[pos:group_pos])
         try:
             group, end = _parse_braced(text, group_pos)
