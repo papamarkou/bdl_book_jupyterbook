@@ -252,11 +252,11 @@ def normalize_eqnarray(text: str) -> str:
     labels, ``\nonumber``, line breaks, and starred/numbered semantics.
     """
     pattern = re.compile(
-        r"\\begin\{eqnarray(?P<star>\*)?\}(?P<body>.*?)\\end\{eqnarray(?P=star)\}",
+        r"\begin\{eqnarray(?P<star>\*)?\}(?P<body>.*?)\end\{eqnarray(?P=star)\}",
         re.DOTALL,
     )
     relation = re.compile(
-        r"&\s*(?P<op>:=|=|<=|>=|<|>|\\(?:leq|geq|approx|sim|propto|to|rightarrow|leftarrow|leftrightarrow))\s*&"
+        r"&\s*(?P<op>:=|=|<=|>=|<|>|\(?:leq|geq|approx|sim|propto|to|rightarrow|leftarrow|leftrightarrow))\s*&"
     )
 
     def replace(match: re.Match[str]) -> str:
