@@ -86,6 +86,17 @@ def _strip_export_frontmatter(text: str) -> str:
     return re.sub(r"\A---\s*\n.*?\n---\s*\n", "", text, count=1, flags=re.DOTALL)
 
 
+def normalize_markdown_emphasis_spacing(text: str) -> str:
+    """Move trailing whitespace outside Markdown emphasis delimiters.
+
+    Legacy TeX declarations such as ``{\bf Regression. }`` can export as
+    ``**Regression. **``. Markdown requires the closing delimiter to follow the
+    emphasized text, so preserve the whitespace while moving it outside.
+    """
+    text = re.sub(r"\*\*([^*\n]*?\S)([ \t]+)\*\*", r"**\1**\2", text)
+    return re.sub(r"(?<!\*)\*([^*\n]*?\S)([ \t]+)\*(?!\*)", r"*\1*\2", text)
+
+
 def summarize_myst_output(output: str) -> None:
     """Print one compact aggregate summary of MyST diagnostics for a chapter."""
     diagnostics = [
@@ -246,6 +257,7 @@ def clean_generated_markdown(
             text = text.replace(structure.placeholder, structure.markdown)
 
     text = restore_footnotes(text, footnote_structures)
+    text = normalize_markdown_emphasis_spacing(text)
 
     # Extracted algorithm bodies can contain TeX's non-breaking-space marker
     # immediately before an already converted Markdown reference.
