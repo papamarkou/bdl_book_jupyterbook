@@ -153,7 +153,13 @@ def _replace_group_declaration(text: str, declaration: str, render: Callable[[st
 
 
 def _strip_grouped_color(text: str) -> str:
-    r"""Remove ``{\color{...} ...}`` styling while preserving the group body."""
+    r"""Remove ``{\color{...} ...}`` styling while preserving the group body.
+
+    Some legacy source spans a color declaration across large structural blocks.
+    If that outer group is not balanced in the current conversion fragment, drop
+    the purely typographic opening declaration rather than leaking a literal
+    opening brace into generated Markdown.
+    """
     pieces: list[str] = []
     pos = 0
     needle = r"{\color"
@@ -167,8 +173,13 @@ def _strip_grouped_color(text: str) -> str:
             group, end = _parse_braced(text, group_pos)
             _, cursor = _parse_braced(group, len(r"\color"))
         except ValueError:
-            pieces.append(text[group_pos : group_pos + 1])
-            pos = group_pos + 1
+            try:
+                _, cursor = _parse_braced(text, group_pos + 1 + len(r"\color"))
+            except ValueError:
+                pieces.append(text[group_pos : group_pos + 1])
+                pos = group_pos + 1
+                continue
+            pos = cursor
             continue
         pieces.append(group[cursor:].lstrip())
         pos = end
