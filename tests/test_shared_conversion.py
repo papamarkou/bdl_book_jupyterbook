@@ -32,6 +32,15 @@ def test_chapter4_sampling_macros_are_expanded() -> None:
     assert normalize_notation(source) == r"R, r, \mathsf{X}"
 
 
+def test_adjacent_math_macro_keeps_control_word_boundary() -> None:
+    assert normalize_notation(r"\mathrm{ESS}=\alpha\numMCsamples") == r"\mathrm{ESS}=\alpha M"
+
+
+def test_variance_notation_is_normalized() -> None:
+    assert normalize_notation(r"\mathbb{V}\textrm{ar}[X]") == r"\operatorname{Var}[X]"
+    assert normalize_notation(r"\mathbb{V}\textrm{\emph{ar}}[X]") == r"\operatorname{Var}[X]"
+
+
 def test_roman_numerals_are_literal_text() -> None:
     assert normalize_notation(r"\romannumeral1) first; \romannumeral2) second") == (
         "i) first; ii) second"
@@ -97,19 +106,28 @@ def test_full_equation_word_preserves_lowercase() -> None:
     assert "satisfies the equation [](#eq:invariance)" in restored
 
 
-def test_algorithm_and_theorem_references_are_semantic_links() -> None:
-    source = (
-        r"See Algorithm \ref{alg:smc} and Theorem \ref{thm:main}."
-    )
+def test_proof_references_let_myst_supply_object_prefix() -> None:
+    source = r"See Algorithm \ref{alg:smc} and Theorem \ref{thm:main}."
     converted, structures = extract_references(source)
     restored = converted
     for structure in structures:
         restored = restored.replace(structure.placeholder, structure.markdown)
 
-    assert "Algorithm [](#alg:smc)" in restored
-    assert "Theorem [](#thm:main)" in restored
-    assert "%s" not in restored
+    assert "See [](#alg:smc) and [](#thm:main)." in restored
+    assert "Algorithm [](#alg:smc)" not in restored
+    assert "Theorem [](#thm:main)" not in restored
     assert r"\ref" not in restored
+
+
+def test_simple_prose_group_around_reference_is_unwrapped() -> None:
+    source = r"{Step 4 of Algorithm \ref{alg:mlsmc_dnn} applies exactly this kernel.}"
+    converted, structures = extract_references(source)
+    restored = converted
+    for structure in structures:
+        restored = restored.replace(structure.placeholder, structure.markdown)
+
+    assert restored == "Step 4 of [](#alg:mlsmc_dnn) applies exactly this kernel."
+    assert not restored.startswith("{")
 
 
 def test_algorithm2e_aligned_tcp_comment_is_preserved() -> None:
@@ -123,8 +141,26 @@ $x \gets 1$ \tcp*[r]{Compute value}
 """
     converted = algorithm_to_myst(source)
     assert "**Inputs:**" in converted
+    assert "{math}`\\mathcal{D}`" in converted
     assert "*Note:* Compute value" in converted
     assert r"\tcp" not in converted
+
+
+def test_algorithm2e_multiline_inline_math_is_one_step() -> None:
+    source = r"""
+\caption{SMC}
+\label{alg:smc}
+$Z_t^{\numMCsamples} \gets
+  Z_{t-1}^{\numMCsamples} \cdot
+  \frac{1}{\numMCsamples}\sum_{k=1}^{\numMCsamples}
+  p(Y \mid \theta_{t-1}^k)^{\lambda_t-\lambda_{t-1}}$\;
+"""
+    converted = algorithm_to_myst(source)
+
+    assert converted.count("1. ") == 1
+    assert "{math}`Z_t^{M} \\gets Z_{t-1}^{M} \\cdot" in converted
+    assert "\\frac{1}{M}\\sum_{k=1}^{M}" in converted
+    assert "$Z_t" not in converted
 
 
 def test_algorithm2e_repeat_loop_is_converted_recursively() -> None:
