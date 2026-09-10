@@ -152,6 +152,39 @@ def _replace_group_declaration(text: str, declaration: str, render: Callable[[st
     return "".join(pieces)
 
 
+def _normalize_em_declarations(text: str, *, inside_emphasis: bool = False) -> str:
+    r"""Convert legacy ``{\em ...}`` groups to ``\emph{...}``.
+
+    Nested ``\em`` declarations are redundant in TeX. Flatten them while already
+    inside emphasis so downstream Markdown conversion cannot create mismatched
+    nested emphasis delimiters.
+    """
+    pieces: list[str] = []
+    pos = 0
+    needle = r"{\em"
+    while True:
+        group_pos = text.find(needle, pos)
+        if group_pos < 0:
+            pieces.append(text[pos:])
+            break
+        pieces.append(text[pos:group_pos])
+        try:
+            group, end = _parse_braced(text, group_pos)
+        except ValueError:
+            pieces.append(text[group_pos : group_pos + 1])
+            pos = group_pos + 1
+            continue
+
+        body = group[len(r"\em") :].lstrip()
+        body = _normalize_em_declarations(body, inside_emphasis=True)
+        if inside_emphasis:
+            pieces.append(body)
+        else:
+            pieces.append(r"\emph{" + body + "}")
+        pos = end
+    return "".join(pieces)
+
+
 def _strip_grouped_color(text: str) -> str:
     r"""Remove ``{\color{...} ...}`` styling while preserving the group body.
 
@@ -356,7 +389,9 @@ def normalize_typography(text: str) -> str:
     text = _strip_grouped_color(text)
 
     # Preserve intended emphasis while replacing legacy declaration syntax with
-    # standard LaTeX that MyST already understands.
+    # standard LaTeX that MyST already understands. Nested ``\em`` declarations
+    # are flattened because repeating the same emphasis has no extra semantics.
+    text = _normalize_em_declarations(text)
     text = _replace_group_declaration(text, r"\bf", lambda body: rf"\textbf{{{body}}}")
 
     for command in TYPOGRAPHIC_COMMANDS:
