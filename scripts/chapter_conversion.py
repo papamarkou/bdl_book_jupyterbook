@@ -87,12 +87,23 @@ def _strip_export_frontmatter(text: str) -> str:
 
 
 def normalize_markdown_emphasis_spacing(text: str) -> str:
-    """Move trailing whitespace outside Markdown emphasis delimiters.
+    """Move invalid inner whitespace outside Markdown emphasis delimiters."""
+    # MyST can occasionally export legacy TeX emphasis with the opening marker
+    # glued to the previous word and whitespace just inside it, e.g.
+    # ``be* evaluated*``. Move that whitespace before the opening marker.
+    text = re.sub(
+        r"(?<=\S)\*\*([ \t]+)([^*\n]*?\S)\*\*",
+        r"\1**\2**",
+        text,
+    )
+    text = re.sub(
+        r"(?<=\S)(?<!\*)\*([ \t]+)([^*\n]*?\S)\*(?!\*)",
+        r"\1*\2*",
+        text,
+    )
 
-    Legacy TeX declarations such as ``{\bf Regression. }`` can export as
-    ``**Regression. **``. Markdown requires the closing delimiter to follow the
-    emphasized text, so preserve the whitespace while moving it outside.
-    """
+    # Legacy TeX declarations such as ``{\bf Regression. }`` can export as
+    # ``**Regression. **``. Move trailing whitespace after the closing marker.
     text = re.sub(r"\*\*([^*\n]*?\S)([ \t]+)\*\*", r"**\1**\2", text)
     return re.sub(r"(?<!\*)\*([^*\n]*?\S)([ \t]+)\*(?!\*)", r"*\1*\2", text)
 
