@@ -7,7 +7,10 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from chapter_conversion import prepare_latex  # noqa: E402
+from chapter_conversion import (  # noqa: E402
+    normalize_markdown_emphasis_spacing,
+    prepare_latex,
+)
 from footnote_structures import extract_footnotes, restore_footnotes  # noqa: E402
 from latex_normalize import (  # noqa: E402
     normalize_eqnarray,
@@ -98,6 +101,12 @@ def test_nonsemantic_typography_is_normalized() -> None:
     assert r"\textcolor" not in converted
     assert r"\color" not in converted
     assert r"{\bf" not in converted
+
+
+def test_markdown_emphasis_trailing_space_moves_outside_delimiters() -> None:
+    source = "**Regression. ** If *important * text follows."
+    converted = normalize_markdown_emphasis_spacing(source)
+    assert converted == "**Regression.**  If *important*  text follows."
 
 
 def test_abbreviated_semantic_references_are_normalized() -> None:
