@@ -46,7 +46,7 @@ def test_variance_notation_is_normalized() -> None:
     assert normalize_notation(r"\mathbb{V}\textrm{\emph{ar}}[X]") == r"\operatorname{Var}[X]"
 
 
-def test_eqnarray_becomes_align_with_one_relation_column() -> None:
+def test_eqnarray_environment_names_become_align() -> None:
     source = r"""\begin{eqnarray}\nonumber
 x & := & y,\\ \nonumber
 z & = & w,\\
@@ -56,9 +56,9 @@ u &\leq& v.
     converted = normalize_eqnarray(source)
     assert r"\begin{align}" in converted
     assert r"\end{align}" in converted
-    assert r"x & := y" in converted
-    assert r"z & = w" in converted
-    assert r"u & \leq v" in converted
+    assert r"x & := & y" in converted
+    assert r"z & = & w" in converted
+    assert r"u &\leq& v" in converted
     assert r"\label{eq:test}" in converted
     assert converted.count(r"\nonumber") == 2
     assert "eqnarray" not in converted
