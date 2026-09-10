@@ -43,6 +43,8 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
         structures.append(ExtractedStructure(token, markdown))
         return token
 
+    # When the source explicitly supplies the semantic word, preserve it. This
+    # covers both \eqref and \ref while letting MyST supply the equation number.
     text = re.sub(
         r"\b([Ee]quation|[Ee]q\.)\s*~?\s*\\(?:eqref|ref)\{([^{}]+)\}",
         lambda m: placeholder(
@@ -50,9 +52,12 @@ def extract_references(text: str) -> tuple[str, list[ExtractedStructure]]:
         ),
         text,
     )
+
+    # A bare \eqref semantically contributes only the parenthesized equation
+    # number. Do not invent the word ``Equation`` when it was absent in TeX.
     text = re.sub(
         r"\\eqref\{([^{}]+)\}",
-        lambda m: placeholder(f"Equation [](#{m.group(1)})"),
+        lambda m: placeholder(f"[](#{m.group(1)})"),
         text,
     )
 
