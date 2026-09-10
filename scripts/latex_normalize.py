@@ -243,6 +243,19 @@ def normalize_variance(text: str) -> str:
     )
 
 
+def normalize_eqnarray(text: str) -> str:
+    r"""Replace legacy ``eqnarray`` environments with standard ``align``.
+
+    The starred form remains unnumbered. The ordinary form stays numbered, and
+    existing ``\label`` and ``\nonumber`` commands are preserved so equation
+    references keep their original semantics.
+    """
+    text = text.replace(r"\begin{eqnarray*}", r"\begin{align*}")
+    text = text.replace(r"\end{eqnarray*}", r"\end{align*}")
+    text = text.replace(r"\begin{eqnarray}", r"\begin{align}")
+    return text.replace(r"\end{eqnarray}", r"\end{align}")
+
+
 def _roman_numeral(number: int) -> str:
     """Return a lowercase Roman numeral for a positive integer."""
     if number <= 0:
@@ -323,7 +336,7 @@ def normalize_pre_extraction(text: str) -> str:
     TeX ``\columnwidth``. Mapping it to ``\textwidth`` lets the shared figure
     extractor preserve author-specified fractional widths consistently.
     """
-    return text.replace(r"\columnwidth", r"\textwidth")
+    return normalize_eqnarray(text.replace(r"\columnwidth", r"\textwidth"))
 
 
 def strip_tex_comments(text: str) -> str:
