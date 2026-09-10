@@ -126,6 +126,7 @@ def _replace_inline_algorithm_comments(text: str) -> str:
 
 def _inline_math_to_myst(text: str) -> str:
     """Convert complete TeX $...$ spans to native MyST inline math roles."""
+
     def replace(match: re.Match[str]) -> str:
         math = normalize_notation(match.group(1))
         math = re.sub(r"\s+", " ", math).strip()
@@ -145,7 +146,7 @@ def _clean_algorithm_fragment(text: str) -> str:
 
 
 def _find_algorithm_statement_end(text: str, start: int) -> int:
-    """Find the next statement boundary, ignoring newlines and \; inside $...$."""
+    r"""Find the next statement boundary, ignoring newlines and \; inside $...$."""
     in_math = False
     pos = start
     while pos < len(text):
@@ -280,10 +281,12 @@ def extract_algorithms(text: str) -> tuple[str, list[ExtractedStructure]]:
     text = strip_tex_comments(text)
     structures: list[ExtractedStructure] = []
     pattern = re.compile(r"\\begin\{algorithm\}(?:\[[^\]]*\])?(.*?)\\end\{algorithm\}", re.DOTALL)
+
     def replace(match: re.Match[str]) -> str:
         placeholder = f"BDLALGORITHMPLACEHOLDER{len(structures):04d}"
         structures.append(ExtractedStructure(placeholder, algorithm_to_myst(match.group(1))))
         return f"\n\n{placeholder}\n\n"
+
     return pattern.sub(replace, text), structures
 
 
@@ -347,6 +350,7 @@ def figure_to_myst(body: str) -> str:
 def extract_figures(text: str) -> tuple[str, list[ExtractedStructure]]:
     structures: list[ExtractedStructure] = []
     pattern = re.compile(r"\\begin\{figure\}(?:\[[^\]]*\])?(.*?)\\end\{figure\}", re.DOTALL)
+
     def replace(match: re.Match[str]) -> str:
         markdown = figure_to_myst(match.group(1))
         if not markdown:
@@ -354,36 +358,51 @@ def extract_figures(text: str) -> tuple[str, list[ExtractedStructure]]:
         placeholder = f"BDLFIGUREPLACEHOLDER{len(structures):04d}"
         structures.append(ExtractedStructure(placeholder, markdown))
         return f"\n\n{placeholder}\n\n"
+
     return pattern.sub(replace, text), structures
 
 
 def mark_proof_environments(text: str) -> str:
+    """Mark theorem-like boundaries so MyST can convert the bodies as ordinary content."""
     for kind in PROOF_KINDS:
         pattern = re.compile(rf"\\begin\{{{kind}\}}(.*?)\\end\{{{kind}\}}", re.DOTALL)
+
         def replace(match: re.Match[str], proof_kind: str = kind) -> str:
             body = match.group(1)
             label_match = re.match(r"\s*\\label\{([^{}]+)\}\s*", body)
             label = label_match.group(1) if label_match else ""
             if label_match:
-                body = body[label_match.end():]
+                body = body[label_match.end() :]
             begin = f"BDLPROOFBEGIN {proof_kind} {label}".rstrip()
             end = f"BDLPROOFEND {proof_kind}"
             return f"\n\n{begin}\n\n{body.strip()}\n\n{end}\n\n"
+
         text = pattern.sub(replace, text)
     return text
 
 
 def restore_proof_directives(text: str) -> str:
-    pattern = re.compile(r"BDLPROOFBEGIN\s+(example|proposition|definition|lemma|theorem|remark|assumption|proof)(?:\s+([^\s]+))?\s*\n(.*?)\n\s*BDLPROOFEND\s+\1", flags=re.DOTALL)
+    """Turn semantic proof markers into MyST's native proof directives."""
+    pattern = re.compile(
+        r"BDLPROOFBEGIN\s+(example|proposition|definition|lemma|theorem|remark|assumption|proof)(?:\s+([^\s]+))?\s*\n(.*?)\n\s*BDLPROOFEND\s+\1",
+        flags=re.DOTALL,
+    )
+
     def replace(match: re.Match[str]) -> str:
         kind = match.group(1)
         label = match.group(2)
         body = match.group(3).strip()
-        lines = [":::{prf:proof}", ":enumerated: false"] if kind == "proof" else [f":::{{prf:{kind}}}"]
+        if kind == "proof":
+            lines = [":::{prf:proof}", ":enumerated: false"]
+        else:
+            lines = [f":::{{prf:{kind}}}"]
         if label:
             lines.append(f":label: {label}")
-        lines.extend(["", body, ":::"])
+        lines.append("")
+        lines.append(body)
+        lines.append(":::")
         return "\n".join(lines)
+
     previous = None
     while previous != text:
         previous = text
@@ -392,10 +411,22 @@ def restore_proof_directives(text: str) -> str:
 
 
 def normalize_headings_for_latex_pass(text: str) -> str:
-    return re.sub(r"\\chapter(?:\[[^\]]*\])?\{[^{}]+\}\s*(?:\\label\{(?:chap|cha):[^{}]+\}\s*)?", "", text, count=1)
+    """Remove the source chapter heading before standalone MyST conversion.
+
+    Individual chapter converters add one canonical page title and target after
+    conversion. Keeping a synthetic chapter/section heading in the isolated TeX
+    pass makes the web theme display the chapter title twice.
+    """
+    return re.sub(
+        r"\\chapter(?:\[[^\]]*\])?\{[^{}]+\}\s*(?:\\label\{(?:chap|cha):[^{}]+\}\s*)?",
+        "",
+        text,
+        count=1,
+    )
 
 
 def restore_extracted_structures(text: str, structures: list[ExtractedStructure]) -> str:
+    """Replace placeholders in converted Markdown with native MyST structures."""
     for structure in structures:
         text = text.replace(structure.placeholder, structure.markdown)
     return restore_proof_directives(text)
