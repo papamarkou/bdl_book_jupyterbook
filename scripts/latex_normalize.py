@@ -3,7 +3,7 @@
 
 This module handles reusable notation expansion and non-semantic typographic
 cleanup. Semantic structures such as algorithms, theorems, proofs, and chapter
-headings belong in myst_structures.py.
+headings belong in myst_structures.py or other shared structural modules.
 """
 
 from __future__ import annotations
@@ -30,6 +30,9 @@ SIMPLE_MATH_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (r"\dimparams", "P"),
     (r"\numtraindata", "N"),
     (r"\numMCsamples", "M"),
+    (r"\numPar", "R"),
+    (r"\idxPar", "r"),
+    (r"\sX", r"\mathsf{X}"),
     (r"\probability", "p"),
     (r"\approxprob", "q"),
     (r"\targetprob", r"\pi"),
@@ -64,6 +67,7 @@ TYPOGRAPHIC_COMMANDS: tuple[str, ...] = (
     r"\smallskip",
     r"\medskip",
     r"\bigskip",
+    r"\noindent",
 )
 
 
@@ -100,7 +104,6 @@ def _replace_braced_command(
             pieces.append(text[pos:])
             break
 
-        # Avoid treating a prefix of a longer control word as the requested command.
         after_command = command_pos + len(command)
         if after_command < len(text) and text[after_command].isalpha():
             pieces.append(text[pos:after_command])
@@ -125,13 +128,107 @@ def _replace_braced_command(
     return "".join(pieces)
 
 
-def normalize_indicator(text: str) -> str:
-    r"""Expand the book's indicator-function macro to standard LaTeX.
+def _replace_group_declaration(text: str, declaration: str, render: Callable[[str], str]) -> str:
+    r"""Replace ``{\declaration ...}`` groups while preserving balanced contents."""
+    pieces: list[str] = []
+    pos = 0
+    needle = "{" + declaration
+    while True:
+        group_pos = text.find(needle, pos)
+        if group_pos < 0:
+            pieces.append(text[pos:])
+            break
+        pieces.append(text[pos:group_pos])
+        try:
+            group, end = _parse_braced(text, group_pos)
+        except ValueError:
+            pieces.append(text[group_pos : group_pos + 1])
+            pos = group_pos + 1
+            continue
 
-    The authoritative TeX macro is ``\Ind[o] = \mathds 1(o)``. MyST/KaTeX does
-    not know that book-specific command, so retain the same round-bracket
-    semantics using a standard blackboard-bold 1.
+        remainder = group[len(declaration) :].lstrip()
+        pieces.append(render(remainder))
+        pos = end
+    return "".join(pieces)
+
+
+def _normalize_em_declarations(text: str, *, inside_emphasis: bool = False) -> str:
+    r"""Convert legacy ``{\em ...}`` groups to ``\emph{...}``.
+
+    Nested ``\em`` declarations are redundant in TeX. Flatten them while already
+    inside emphasis so downstream Markdown conversion cannot create mismatched
+    nested emphasis delimiters. Respect TeX control-word boundaries so commands
+    such as ``\emph`` are never mistaken for the legacy ``\em`` declaration.
     """
+    pieces: list[str] = []
+    pos = 0
+    needle = r"{\em"
+    while True:
+        group_pos = text.find(needle, pos)
+        if group_pos < 0:
+            pieces.append(text[pos:])
+            break
+
+        after_em = group_pos + len(needle)
+        if after_em < len(text) and text[after_em].isalpha():
+            pieces.append(text[pos:after_em])
+            pos = after_em
+            continue
+
+        pieces.append(text[pos:group_pos])
+        try:
+            group, end = _parse_braced(text, group_pos)
+        except ValueError:
+            pieces.append(text[group_pos : group_pos + 1])
+            pos = group_pos + 1
+            continue
+
+        body = group[len(r"\em") :].lstrip()
+        body = _normalize_em_declarations(body, inside_emphasis=True)
+        if inside_emphasis:
+            pieces.append(body)
+        else:
+            pieces.append(r"\emph{" + body + "}")
+        pos = end
+    return "".join(pieces)
+
+
+def _strip_grouped_color(text: str) -> str:
+    r"""Remove ``{\color{...} ...}`` styling while preserving the group body.
+
+    Some legacy source spans a color declaration across large structural blocks.
+    If that outer group is not balanced in the current conversion fragment, drop
+    the purely typographic opening declaration rather than leaking a literal
+    opening brace into generated Markdown.
+    """
+    pieces: list[str] = []
+    pos = 0
+    needle = r"{\color"
+    while True:
+        group_pos = text.find(needle, pos)
+        if group_pos < 0:
+            pieces.append(text[pos:])
+            break
+        pieces.append(text[pos:group_pos])
+        try:
+            group, end = _parse_braced(text, group_pos)
+            _, cursor = _parse_braced(group, len(r"\color"))
+        except ValueError:
+            try:
+                _, cursor = _parse_braced(text, group_pos + 1 + len(r"\color"))
+            except ValueError:
+                pieces.append(text[group_pos : group_pos + 1])
+                pos = group_pos + 1
+                continue
+            pos = cursor
+            continue
+        pieces.append(group[cursor:].lstrip())
+        pos = end
+    return "".join(pieces)
+
+
+def normalize_indicator(text: str) -> str:
+    r"""Expand the book's indicator-function macro to standard LaTeX."""
     text = re.sub(
         r"\\Ind\[([^\]]+)\]",
         lambda match: rf"\mathbb{{1}}\left({match.group(1)}\right)",
@@ -144,9 +241,7 @@ def normalize_expectation(text: str) -> str:
     r"""Expand the book's ``\E`` macro, including its optional arguments."""
     text = re.sub(
         r"\\E\[([^\]]+)\]\[([^\]]+)\]",
-        lambda match: (
-            rf"\mathbb{{E}}_{{{match.group(1)}}}\left[{match.group(2)}\right]"
-        ),
+        lambda match: rf"\mathbb{{E}}_{{{match.group(1)}}}\left[{match.group(2)}\right]",
         text,
     )
     text = re.sub(
@@ -175,6 +270,30 @@ def normalize_capital_tilde(text: str) -> str:
         1,
         lambda args: rf"\widetilde{{{args[0]}}}",
     )
+
+
+def normalize_variance(text: str) -> str:
+    r"""Normalize legacy variance notation to standard LaTeX."""
+    text = text.replace(
+        r"\mathbb{V}\textrm{\emph{ar}}",
+        r"\operatorname{Var}",
+    )
+    return text.replace(
+        r"\mathbb{V}\textrm{ar}",
+        r"\operatorname{Var}",
+    )
+
+
+def normalize_eqnarray(text: str) -> str:
+    r"""Replace legacy ``eqnarray`` environments with ``align`` equivalents.
+
+    This deliberately changes only the environment names. Existing alignment
+    markers, labels, ``\nonumber`` commands, and line breaks are preserved.
+    """
+    text = text.replace(r"\begin{eqnarray*}", r"\begin{align*}")
+    text = text.replace(r"\end{eqnarray*}", r"\end{align*}")
+    text = text.replace(r"\begin{eqnarray}", r"\begin{align}")
+    return text.replace(r"\end{eqnarray}", r"\end{align}")
 
 
 def _roman_numeral(number: int) -> str:
@@ -213,29 +332,55 @@ def normalize_roman_numerals(text: str) -> str:
     )
 
 
+def _replace_simple_math_macros(text: str) -> str:
+    """Replace simple book macros without merging adjacent TeX control words."""
+    replacements = dict(SIMPLE_MATH_REPLACEMENTS)
+    pattern = re.compile(
+        "|".join(
+            re.escape(source)
+            for source in sorted(replacements, key=len, reverse=True)
+        )
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        replacement = replacements[match.group(0)]
+        if (
+            replacement
+            and replacement[0].isalpha()
+            and match.start() > 0
+            and text[match.start() - 1].isalpha()
+        ):
+            return " " + replacement
+        return replacement
+
+    return pattern.sub(replace, text)
+
+
 def normalize_notation(text: str) -> str:
     """Expand the conservative subset of global book notation macros."""
     text = normalize_indicator(text)
     text = normalize_expectation(text)
     text = normalize_kl(text)
     text = normalize_capital_tilde(text)
+    text = normalize_variance(text)
     text = normalize_roman_numerals(text)
     for source, replacement in COMPOUND_REPLACEMENTS:
         text = text.replace(source, replacement)
-    for source, replacement in SIMPLE_MATH_REPLACEMENTS:
-        text = text.replace(source, replacement)
-    return text
+    return _replace_simple_math_macros(text)
+
+
+def normalize_pre_extraction(text: str) -> str:
+    r"""Normalize source syntax needed before structural extraction.
+
+    In the web book, a figure's enclosing content width plays the same role as
+    TeX ``\columnwidth``. Mapping it to ``\textwidth`` lets the shared figure
+    extractor preserve author-specified fractional widths consistently.
+    """
+    return normalize_eqnarray(text.replace(r"\columnwidth", r"\textwidth"))
 
 
 def strip_tex_comments(text: str) -> str:
-    """Remove TeX comments without introducing artificial paragraph breaks.
-
-    A TeX percent comment consumes the remainder of its physical line, including
-    the end-of-line token. Removing only the comment text leaves runs of blank
-    lines behind, which a Markdown converter can incorrectly interpret as new
-    paragraphs. Consume the commented newline as TeX does; any genuine blank
-    lines already present in the source remain untouched.
-    """
+    """Remove TeX comments without introducing artificial paragraph breaks."""
     return re.sub(r"(?<!\\)%[^\n]*(?:\n|$)", "", text)
 
 
@@ -246,6 +391,17 @@ def normalize_typography(text: str) -> str:
         lambda match: match.group(1) + match.group(2),
         text,
     )
+
+    # Color is purely presentational in the source; preserve its contents only.
+    text = _replace_braced_command(text, r"\textcolor", 2, lambda args: args[1])
+    text = _strip_grouped_color(text)
+
+    # Preserve intended emphasis while replacing legacy declaration syntax with
+    # standard LaTeX that MyST already understands. Nested ``\em`` declarations
+    # are flattened because repeating the same emphasis has no extra semantics.
+    text = _normalize_em_declarations(text)
+    text = _replace_group_declaration(text, r"\bf", lambda body: rf"\textbf{{{body}}}")
+
     for command in TYPOGRAPHIC_COMMANDS:
         text = text.replace(command, "")
     return text

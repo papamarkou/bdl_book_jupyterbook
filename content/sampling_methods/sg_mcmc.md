@@ -44,22 +44,23 @@ where {math}`\bm{\Xi}\subset\mathcal{D}` is the sampled batch. The sampling proc
 \theta_{t+1} \gets \theta_t-\alpha_t\nabla_{\theta_t}\widetilde{U}(\theta_t)+\sqrt{2\alpha_t}\,\bm{\epsilon}_t,~~~~\bm{\epsilon}_t \sim \mathcal{N}(\bm{0},\bm{I}),
 ```
 
-where {math}`\alpha_t` is the step size at iteration {math}`t`. The complete SGLD framework is outlined in Algorithm [%s](#sgmcmc_algo:sgld). Compared with standard SGD, SGLD introduces an additional random-noise term {math}`\sqrt{2\alpha_t}\,\bm{\epsilon}_t`. As noted by {cite:t}`welling2011bayesian`, SGLD approaches standard unadjusted Langevin dynamics {cite:p}`roberts1996exponential` when the step size {math}`\alpha_t` is sufficiently small, as the injected noise dominates the stochastic-gradient noise. Under standard regularity conditions, convergence is guaranteed by a decaying step-size schedule {cite:p}`eon1998online,welling2011bayesian,ma2015complete`. Any schedule satisfying i) {math}`\sum_{t=1}^{\infty}\alpha_t=\infty` and ii) {math}`\sum_{t=1}^{\infty}\alpha_t^2<\infty` allows the sampler to explore the target distribution while controlling its asymptotic error {cite:p}`chen2025bayesian`. Notably, mini-batch noise in SGD without externally injected noise can produce behaviour qualitatively similar to SGLD, but converges to a biased approximate posterior {cite:p}`mandt2017stochastic`.
+where {math}`\alpha_t` is the step size at iteration {math}`t`. The complete SGLD framework is outlined in [](#sgmcmc_algo:sgld). Compared with standard SGD, SGLD introduces an additional random-noise term {math}`\sqrt{2\alpha_t}\,\bm{\epsilon}_t`. As noted by {cite:t}`welling2011bayesian`, SGLD approaches standard unadjusted Langevin dynamics {cite:p}`roberts1996exponential` when the step size {math}`\alpha_t` is sufficiently small, as the injected noise dominates the stochastic-gradient noise. Under standard regularity conditions, convergence is guaranteed by a decaying step-size schedule {cite:p}`eon1998online,welling2011bayesian,ma2015complete`. Any schedule satisfying i) {math}`\sum_{t=1}^{\infty}\alpha_t=\infty` and ii) {math}`\sum_{t=1}^{\infty}\alpha_t^2<\infty` allows the sampler to explore the target distribution while controlling its asymptotic error {cite:p}`chen2025bayesian`. Notably, mini-batch noise in SGD without externally injected noise can produce behaviour qualitatively similar to SGLD, but converges to a biased approximate posterior {cite:p}`mandt2017stochastic`.
 
 :::{prf:algorithm} Stochastic Gradient Langevin Dynamics (SGLD)
 :label: sgmcmc_algo:sgld
 
-- **Inputs:** dataset $\mathcal{D}$, initial sample $\theta_0 \in \Theta$, step-size schedule $\{\alpha_t\}_{t\geq 0}$
-- **Output:** collected samples $\mathcal{S} \subset \Theta$
-1. $\theta \gets \theta_0$; $\mathcal{S} \gets \emptyset$
+- **Inputs:** dataset {math}`\mathcal{D}`, initial sample {math}`\theta_0 \in \Theta`, step-size schedule {math}`\{\alpha_t\}_{t\geq 0}`
+- **Output:** collected samples {math}`\mathcal{S} \subset \Theta`
+1. {math}`\theta \gets \theta_0`; {math}`\mathcal{S} \gets \emptyset`
 1. **For** each iteration:
-    1. $\bm{\Xi} \gets$ a mini-batch sampled from $\mathcal{D}$
-    1. $\widetilde{U} \gets -\frac{|\mathcal{D}|}{|\bm{\Xi}|}\log p(\bm{\Xi}\mid \theta) - \log p(\theta)$ — *Note:* Compute energy
-    1. $\theta \gets \theta - \alpha_t \nabla_{\theta} \widetilde{U} + \sqrt{2\alpha_t}\bm{\epsilon}$ — *Note:* $\bm{\epsilon} \sim \mathcal{N}(\bm{0}, \bm{I})$
-    1. $\mathcal{S} \gets \mathcal{S} \cup \{\theta\}$
+    1. {math}`\bm{\Xi} \gets` a mini-batch sampled from {math}`\mathcal{D}`
+    1. {math}`\widetilde{U} \gets -\frac{|\mathcal{D}|}{|\bm{\Xi}|}\log p(\bm{\Xi}\mid \theta) - \log p(\theta)` — *Note:* Compute energy
+    1. {math}`\theta \gets \theta - \alpha_t \nabla_{\theta} \widetilde{U} + \sqrt{2\alpha_t}\bm{\epsilon}` — *Note:* {math}`\bm{\epsilon} \sim \mathcal{N}(\bm{0}, \bm{I})`
+    1. {math}`\mathcal{S} \gets \mathcal{S} \cup \{\theta\}`
 :::
 
-### Stochastic Gradient Hamiltonian Monte Carlo
++++
+## Stochastic Gradient Hamiltonian Monte Carlo
 
 Full-batch Hamiltonian Monte Carlo (HMC) has achieved gold-standard performance in Bayesian inference {cite:p}`izmailov2021what`. HMC incorporates a kinetic-energy term characterised by a set of auxiliary “momentum” variables. To adapt HMC to deep learning models and reduce its memory requirements, stochastic gradient HMC (SG-HMC) {cite:p}`chen2014stochastic` eliminates the need for full-batch gradients and removes the MH correction used by full-batch HMC. Specifically, naive SG-HMC replaces the full-batch energy in the Hamiltonian with its mini-batch estimate:
 
@@ -73,24 +74,24 @@ where {math}`\bm{r}` is the momentum and {math}`\bm{M}` is a positive-definite m
 \mathrm{d}\theta=\bm{M}^{-1}\bm{r}\,\mathrm{d}t~~~~\text{and}~~~~\mathrm{d}\bm{r}=-\nabla_{\theta}\widetilde{U}(\theta)\,\mathrm{d}t-C\bm{M}^{-1}\bm{r}\,\mathrm{d}t+\sqrt{2(C-\widehat{B})}\,\mathrm{d}\bm{W}_t.
 ```
 
-Here, {math}`\bm{W}_t` is standard Brownian motion. The friction and injected-noise terms counteract the stochastic-gradient noise. These modified dynamics are commonly known as second-order Langevin dynamics {cite:p}`wang1945theory`. The complete SG-HMC framework is outlined in Algorithm [%s](#sgmcmc_algo:sghmc).
+Here, {math}`\bm{W}_t` is standard Brownian motion. The friction and injected-noise terms counteract the stochastic-gradient noise. These modified dynamics are commonly known as second-order Langevin dynamics {cite:p}`wang1945theory`. The complete SG-HMC framework is outlined in [](#sgmcmc_algo:sghmc).
 
 :::{prf:algorithm} Stochastic Gradient Hamiltonian Monte Carlo (SG-HMC)
 :label: sgmcmc_algo:sghmc
 
-- **Inputs:** dataset $\mathcal{D}$, initial sample $\theta_0 \in \Theta$, initial momentum $\bm{r}_0$, step-size schedule $\{\alpha_t\}_{t\geq 0}$, inner steps $m$, friction coefficient $C$, noise estimate $\widehat{B}$
-- **Output:** collected samples $\mathcal{S} \subset \Theta$
-1. $\theta \gets \theta_0$; $\bm{r} \gets \bm{r}_0$; $\mathcal{S} \gets \emptyset$
+- **Inputs:** dataset {math}`\mathcal{D}`, initial sample {math}`\theta_0 \in \Theta`, initial momentum {math}`\bm{r}_0`, step-size schedule {math}`\{\alpha_t\}_{t\geq 0}`, inner steps {math}`m`, friction coefficient {math}`C`, noise estimate {math}`\widehat{B}`
+- **Output:** collected samples {math}`\mathcal{S} \subset \Theta`
+1. {math}`\theta \gets \theta_0`; {math}`\bm{r} \gets \bm{r}_0`; {math}`\mathcal{S} \gets \emptyset`
 1. **For** each iteration:
-    1. $\bm{r} \sim \mathcal{N}(\bm{0}, \bm{M})$ — *Note:* Optionally resample momentum
-    1. $(\theta^{(0)}, \bm{r}^{(0)}) \gets (\theta, \bm{r})$
-    1. **For** $i = 1$ to $m$:
-        1. $\bm{\Xi} \gets$ a mini-batch sampled from $\mathcal{D}$
-        1. $\widetilde{U} \gets -\frac{|\mathcal{D}|}{|\bm{\Xi}|}\log p(\bm{\Xi}\mid \theta^{(i-1)}) - \log p(\theta^{(i-1)})$ — *Note:* Compute energy
-        1. $\theta^{(i)} \gets \theta^{(i-1)} + \alpha_t \bm{M}^{-1}\bm{r}^{(i-1)}$
-        1. $\bm{r}^{(i)} \gets \bm{r}^{(i-1)} - \alpha_t \nabla_{\theta} \widetilde{U} - \alpha_t C \bm{M}^{-1} \bm{r}^{(i-1)} + \sqrt{2\alpha_t(C-\widehat{B})}\bm{\epsilon}_t$ — *Note:* $\bm{\epsilon}_t \sim \mathcal{N}(\bm{0}, \bm{I})$
-    1. $(\theta, \bm{r}) \gets (\theta^{(m)}, \bm{r}^{(m)})$ — *Note:* No Metropolis-Hastings step
-    1. $\mathcal{S} \gets \mathcal{S} \cup \{\theta\}$
+    1. {math}`\bm{r} \sim \mathcal{N}(\bm{0}, \bm{M})` — *Note:* Optionally resample momentum
+    1. {math}`(\theta^{(0)}, \bm{r}^{(0)}) \gets (\theta, \bm{r})`
+    1. **For** {math}`i = 1` to {math}`m`:
+        1. {math}`\bm{\Xi} \gets` a mini-batch sampled from {math}`\mathcal{D}`
+        1. {math}`\widetilde{U} \gets -\frac{|\mathcal{D}|}{|\bm{\Xi}|}\log p(\bm{\Xi}\mid \theta^{(i-1)}) - \log p(\theta^{(i-1)})` — *Note:* Compute energy
+        1. {math}`\theta^{(i)} \gets \theta^{(i-1)} + \alpha_t \bm{M}^{-1}\bm{r}^{(i-1)}`
+        1. {math}`\bm{r}^{(i)} \gets \bm{r}^{(i-1)} - \alpha_t \nabla_{\theta} \widetilde{U} - \alpha_t C \bm{M}^{-1} \bm{r}^{(i-1)} + \sqrt{2\alpha_t(C-\widehat{B})}\bm{\epsilon}_t` — *Note:* {math}`\bm{\epsilon}_t \sim \mathcal{N}(\bm{0}, \bm{I})`
+    1. {math}`(\theta, \bm{r}) \gets (\theta^{(m)}, \bm{r}^{(m)})` — *Note:* No Metropolis-Hastings step
+    1. {math}`\mathcal{S} \gets \mathcal{S} \cup \{\theta\}`
 :::
 
 +++
@@ -119,7 +120,8 @@ where {math}`\alpha_0` is the initial step size, {math}`K` is the number of cycl
 Comparison of cyclical and decaying step-size schedules. Adapted from [@zhang2020cyclical] with the permission of Ruqi Zhang.
 :::
 
-### Sampling from Wide and Robust Local Minima
++++
+## Sampling from Wide and Robust Local Minima
 
 Distribution shift between training and test data creates a generalisation challenge for SG-MCMC algorithms {cite:p}`bansak2024learning`. Local minima identified using the training data may not remain local minima under the test data, especially when they are sharp {cite:p}`baldassi2016unreasonable,chaudhari2019entropy`. To mitigate this problem, {cite:t}`lientropy` introduces Entropy-MCMC (EMCMC), which incorporates flatness-aware optimisation methods {cite:p}`chaudhari2019entropy,foret2021sharpnessaware,bisla2022low` into the SG-MCMC framework. Specifically, EMCMC introduces local entropy into the posterior distribution of model parameters:
 
