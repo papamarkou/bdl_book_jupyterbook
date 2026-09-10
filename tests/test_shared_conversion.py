@@ -9,7 +9,12 @@ sys.path.insert(0, str(SCRIPTS))
 
 from chapter_conversion import prepare_latex  # noqa: E402
 from footnote_structures import extract_footnotes, restore_footnotes  # noqa: E402
-from latex_normalize import normalize_latex, normalize_notation, normalize_pre_extraction  # noqa: E402
+from latex_normalize import (  # noqa: E402
+    normalize_eqnarray,
+    normalize_latex,
+    normalize_notation,
+    normalize_pre_extraction,
+)
 from myst_structures import algorithm_to_myst, figure_to_myst  # noqa: E402
 from proof_structures import extract_proof_environments, proof_directive  # noqa: E402
 from semantic_references import extract_references  # noqa: E402
@@ -39,6 +44,24 @@ def test_adjacent_math_macro_keeps_control_word_boundary() -> None:
 def test_variance_notation_is_normalized() -> None:
     assert normalize_notation(r"\mathbb{V}\textrm{ar}[X]") == r"\operatorname{Var}[X]"
     assert normalize_notation(r"\mathbb{V}\textrm{\emph{ar}}[X]") == r"\operatorname{Var}[X]"
+
+
+def test_eqnarray_becomes_align_with_one_relation_column() -> None:
+    source = r"""\begin{eqnarray}\nonumber
+x & := & y,\\ \nonumber
+z & = & w,\\
+\label{eq:test}
+u &\leq& v.
+\end{eqnarray}"""
+    converted = normalize_eqnarray(source)
+    assert r"\begin{align}" in converted
+    assert r"\end{align}" in converted
+    assert r"x & := y" in converted
+    assert r"z & = w" in converted
+    assert r"u & \leq v" in converted
+    assert r"\label{eq:test}" in converted
+    assert converted.count(r"\nonumber") == 2
+    assert "eqnarray" not in converted
 
 
 def test_roman_numerals_are_literal_text() -> None:
@@ -104,6 +127,17 @@ def test_full_equation_word_preserves_lowercase() -> None:
         restored = restored.replace(structure.placeholder, structure.markdown)
 
     assert "satisfies the equation [](#eq:invariance)" in restored
+
+
+def test_bare_eqref_does_not_invent_equation_word() -> None:
+    source = r"The construction in \eqref{eq:DNN} is approximated at finite resolution."
+    converted, structures = extract_references(source)
+    restored = converted
+    for structure in structures:
+        restored = restored.replace(structure.placeholder, structure.markdown)
+
+    assert "in [](#eq:DNN) is approximated" in restored
+    assert "Equation [](#eq:DNN)" not in restored
 
 
 def test_proof_references_let_myst_supply_object_prefix() -> None:
