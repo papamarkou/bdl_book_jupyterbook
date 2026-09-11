@@ -68,6 +68,7 @@ TYPOGRAPHIC_COMMANDS: tuple[str, ...] = (
     r"\medskip",
     r"\bigskip",
     r"\noindent",
+    r"\scriptsize",
 )
 
 
