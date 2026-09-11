@@ -138,6 +138,13 @@ def _replace_group_declaration(text: str, declaration: str, render: Callable[[st
         if group_pos < 0:
             pieces.append(text[pos:])
             break
+
+        after_declaration = group_pos + len(needle)
+        if after_declaration < len(text) and text[after_declaration].isalpha():
+            pieces.append(text[pos:after_declaration])
+            pos = after_declaration
+            continue
+
         pieces.append(text[pos:group_pos])
         try:
             group, end = _parse_braced(text, group_pos)
@@ -272,6 +279,26 @@ def normalize_capital_tilde(text: str) -> str:
     )
 
 
+def normalize_norm(text: str) -> str:
+    r"""Expand the book's paired-delimiter ``\norm{...}`` macro."""
+    return _replace_braced_command(
+        text,
+        r"\norm",
+        1,
+        lambda args: rf"\left\lVert {args[0]} \right\rVert",
+    )
+
+
+def normalize_differential(text: str) -> str:
+    r"""Expand the book's ``\rd`` infinitesimal macro."""
+    return re.sub(r"\\rd(?![A-Za-z])", r"\\,\\mathrm{d}", text)
+
+
+def normalize_variance_macro(text: str) -> str:
+    r"""Expand the book's ``\Var`` symbol while preserving following scripts."""
+    return re.sub(r"\\Var(?![A-Za-z])", r"\\mathbb{V}", text)
+
+
 def normalize_variance(text: str) -> str:
     r"""Normalize legacy variance notation to standard LaTeX."""
     text = text.replace(
@@ -362,6 +389,9 @@ def normalize_notation(text: str) -> str:
     text = normalize_expectation(text)
     text = normalize_kl(text)
     text = normalize_capital_tilde(text)
+    text = normalize_norm(text)
+    text = normalize_differential(text)
+    text = normalize_variance_macro(text)
     text = normalize_variance(text)
     text = normalize_roman_numerals(text)
     for source, replacement in COMPOUND_REPLACEMENTS:
@@ -401,6 +431,7 @@ def normalize_typography(text: str) -> str:
     # are flattened because repeating the same emphasis has no extra semantics.
     text = _normalize_em_declarations(text)
     text = _replace_group_declaration(text, r"\bf", lambda body: rf"\textbf{{{body}}}")
+    text = _replace_group_declaration(text, r"\it", lambda body: rf"\textit{{{body}}}")
 
     for command in TYPOGRAPHIC_COMMANDS:
         text = text.replace(command, "")
