@@ -129,7 +129,7 @@ def _replace_braced_command(
 
 
 def _replace_group_declaration(text: str, declaration: str, render: Callable[[str], str]) -> str:
-    r"""Replace ``{\declaration ...}`` groups while preserving balanced contents."""
+    r"""Replace ``{\declaration ...}`` groups while preserving TeX argument braces."""
     pieces: list[str] = []
     pos = 0
     needle = "{" + declaration
@@ -154,7 +154,14 @@ def _replace_group_declaration(text: str, declaration: str, render: Callable[[st
             continue
 
         remainder = group[len(declaration) :].lstrip()
-        pieces.append(render(remainder))
+        rendered = render(remainder)
+        # In ``\paragraph{\it Title}``, the declaration group is also the
+        # command's required argument. Preserve those outer braces; otherwise
+        # the normalization would incorrectly produce ``\paragraph\textit{...}``.
+        is_command_argument = re.search(
+            r"\\[A-Za-z@]+\*?(?:\[[^\]]*\])?\s*$", text[:group_pos]
+        )
+        pieces.append("{" + rendered + "}" if is_command_argument else rendered)
         pos = end
     return "".join(pieces)
 
