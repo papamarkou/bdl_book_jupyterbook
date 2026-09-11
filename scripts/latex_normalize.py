@@ -429,6 +429,12 @@ def normalize_typography(text: str) -> str:
         text,
     )
 
+    # Remove no-argument presentation commands before interpreting grouped
+    # declarations. This prevents ``\noindent{\bf ...}`` from being mistaken
+    # for a command whose required argument is the following brace group.
+    for command in TYPOGRAPHIC_COMMANDS:
+        text = text.replace(command, "")
+
     # Color is purely presentational in the source; preserve its contents only.
     text = _replace_braced_command(text, r"\textcolor", 2, lambda args: args[1])
     text = _strip_grouped_color(text)
@@ -439,9 +445,6 @@ def normalize_typography(text: str) -> str:
     text = _normalize_em_declarations(text)
     text = _replace_group_declaration(text, r"\bf", lambda body: rf"\textbf{{{body}}}")
     text = _replace_group_declaration(text, r"\it", lambda body: rf"\textit{{{body}}}")
-
-    for command in TYPOGRAPHIC_COMMANDS:
-        text = text.replace(command, "")
     return text
 
 
