@@ -33,6 +33,15 @@ def test_legacy_it_declaration_is_normalized_without_touching_item() -> None:
     assert r"{\it" not in converted
 
 
+def test_scriptsize_is_dropped_as_nonsemantic_typography() -> None:
+    source = r"Method & {\scriptsize$1.23\pm0.04$} & {\scriptsize 98.7}"
+    converted = normalize_latex(source)
+
+    assert r"\scriptsize" not in converted
+    assert r"$1.23\pm0.04$" in converted
+    assert "98.7" in converted
+
+
 def test_algorithm2e_foreach_else_and_kwret_are_converted() -> None:
     source = r"""
 \caption{Variance-corrected quantization}
