@@ -13,30 +13,7 @@ import re
 from pathlib import Path
 
 from common import tex_path
-
-
-ACCENTS = {
-    "'": {
-        "a": "á", "e": "é", "i": "í", "o": "ó", "u": "ú", "y": "ý",
-        "A": "Á", "E": "É", "I": "Í", "O": "Ó", "U": "Ú", "Y": "Ý",
-    },
-    '"': {
-        "a": "ä", "e": "ë", "i": "ï", "o": "ö", "u": "ü", "y": "ÿ",
-        "A": "Ä", "E": "Ë", "I": "Ï", "O": "Ö", "U": "Ü",
-    },
-    "`": {
-        "a": "à", "e": "è", "i": "ì", "o": "ò", "u": "ù",
-        "A": "À", "E": "È", "I": "Ì", "O": "Ò", "U": "Ù",
-    },
-    "^": {
-        "a": "â", "e": "ê", "i": "î", "o": "ô", "u": "û",
-        "A": "Â", "E": "Ê", "I": "Î", "O": "Ô", "U": "Û",
-    },
-    "~": {
-        "a": "ã", "n": "ñ", "o": "õ", "A": "Ã", "N": "Ñ", "O": "Õ",
-    },
-    "c": {"c": "ç", "C": "Ç"},
-}
+from text_normalize import normalize_tex_text_accents
 
 
 def parse_braced(text: str, start: int) -> tuple[str, int]:
@@ -84,19 +61,7 @@ def latex_to_text(value: str) -> str:
     """Convert the small subset of LaTeX used in contributor metadata."""
     value = value.replace("\\&", "&")
     value = value.replace("~", " ")
-
-    accent_pattern = re.compile(r"\\([\'\"`\^~c])(?:\{([^{}])\}|([^\\{}\s]))")
-
-    def replace_accent(match: re.Match[str]) -> str:
-        accent = match.group(1)
-        letter = match.group(2) or match.group(3)
-        return ACCENTS.get(accent, {}).get(letter, letter)
-
-    previous = None
-    while previous != value:
-        previous = value
-        value = accent_pattern.sub(replace_accent, value)
-
+    value = normalize_tex_text_accents(value)
     value = re.sub(r"\\textit\{([^{}]*)\}", r"\1", value)
     value = re.sub(r"\\textbf\{([^{}]*)\}", r"\1", value)
     value = value.replace("\\,", " ")
