@@ -68,6 +68,7 @@ TYPOGRAPHIC_COMMANDS: tuple[str, ...] = (
     r"\medskip",
     r"\bigskip",
     r"\noindent",
+    r"\scriptsize",
 )
 
 
@@ -129,7 +130,7 @@ def _replace_braced_command(
 
 
 def _replace_group_declaration(text: str, declaration: str, render: Callable[[str], str]) -> str:
-    r"""Replace ``{\declaration ...}`` groups while preserving balanced contents."""
+    r"""Replace ``{\declaration ...}`` groups while preserving TeX argument braces."""
     pieces: list[str] = []
     pos = 0
     needle = "{" + declaration
@@ -138,6 +139,13 @@ def _replace_group_declaration(text: str, declaration: str, render: Callable[[st
         if group_pos < 0:
             pieces.append(text[pos:])
             break
+
+        after_declaration = group_pos + len(needle)
+        if after_declaration < len(text) and text[after_declaration].isalpha():
+            pieces.append(text[pos:after_declaration])
+            pos = after_declaration
+            continue
+
         pieces.append(text[pos:group_pos])
         try:
             group, end = _parse_braced(text, group_pos)
@@ -147,7 +155,14 @@ def _replace_group_declaration(text: str, declaration: str, render: Callable[[st
             continue
 
         remainder = group[len(declaration) :].lstrip()
-        pieces.append(render(remainder))
+        rendered = render(remainder)
+        # In ``\paragraph{\it Title}``, the declaration group is also the
+        # command's required argument. Preserve those outer braces; otherwise
+        # the normalization would incorrectly produce ``\paragraph\textit{...}``.
+        is_command_argument = re.search(
+            r"\\[A-Za-z@]+\*?(?:\[[^\]]*\])?\s*$", text[:group_pos]
+        )
+        pieces.append("{" + rendered + "}" if is_command_argument else rendered)
         pos = end
     return "".join(pieces)
 
@@ -272,6 +287,26 @@ def normalize_capital_tilde(text: str) -> str:
     )
 
 
+def normalize_norm(text: str) -> str:
+    r"""Expand the book's paired-delimiter ``\norm{...}`` macro."""
+    return _replace_braced_command(
+        text,
+        r"\norm",
+        1,
+        lambda args: rf"\left\lVert {args[0]} \right\rVert",
+    )
+
+
+def normalize_differential(text: str) -> str:
+    r"""Expand the book's ``\rd`` infinitesimal macro."""
+    return re.sub(r"\\rd(?![A-Za-z])", r"\\,\\mathrm{d}", text)
+
+
+def normalize_variance_macro(text: str) -> str:
+    r"""Expand the book's ``\Var`` symbol while preserving following scripts."""
+    return re.sub(r"\\Var(?![A-Za-z])", r"\\mathbb{V}", text)
+
+
 def normalize_variance(text: str) -> str:
     r"""Normalize legacy variance notation to standard LaTeX."""
     text = text.replace(
@@ -362,6 +397,9 @@ def normalize_notation(text: str) -> str:
     text = normalize_expectation(text)
     text = normalize_kl(text)
     text = normalize_capital_tilde(text)
+    text = normalize_norm(text)
+    text = normalize_differential(text)
+    text = normalize_variance_macro(text)
     text = normalize_variance(text)
     text = normalize_roman_numerals(text)
     for source, replacement in COMPOUND_REPLACEMENTS:
@@ -392,6 +430,12 @@ def normalize_typography(text: str) -> str:
         text,
     )
 
+    # Remove no-argument presentation commands before interpreting grouped
+    # declarations. This prevents ``\noindent{\bf ...}`` from being mistaken
+    # for a command whose required argument is the following brace group.
+    for command in TYPOGRAPHIC_COMMANDS:
+        text = text.replace(command, "")
+
     # Color is purely presentational in the source; preserve its contents only.
     text = _replace_braced_command(text, r"\textcolor", 2, lambda args: args[1])
     text = _strip_grouped_color(text)
@@ -401,9 +445,7 @@ def normalize_typography(text: str) -> str:
     # are flattened because repeating the same emphasis has no extra semantics.
     text = _normalize_em_declarations(text)
     text = _replace_group_declaration(text, r"\bf", lambda body: rf"\textbf{{{body}}}")
-
-    for command in TYPOGRAPHIC_COMMANDS:
-        text = text.replace(command, "")
+    text = _replace_group_declaration(text, r"\it", lambda body: rf"\textit{{{body}}}")
     return text
 
 

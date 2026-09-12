@@ -197,9 +197,13 @@ def _algorithm_sequence(text: str, indent: int = 0) -> list[str]:
         if matched:
             continue
 
-        if text.startswith(r"\Return", pos):
-            arg, pos = parse_braced(text, pos + len(r"\Return"))
-            lines.append(f"{prefix}1. **Return** {_clean_algorithm_fragment(arg)}")
+        for command in (r"\KwRet", r"\Return"):
+            if text.startswith(command, pos):
+                arg, pos = parse_braced(text, pos + len(command))
+                lines.append(f"{prefix}1. **Return** {_clean_algorithm_fragment(arg)}")
+                matched = True
+                break
+        if matched:
             continue
 
         if text.startswith(r"\tcp", pos):
@@ -214,6 +218,13 @@ def _algorithm_sequence(text: str, indent: int = 0) -> list[str]:
             lines.extend(_algorithm_sequence(body, indent + 1))
             continue
 
+        if text.startswith(r"\ForEach", pos):
+            condition, next_pos = parse_braced(text, pos + len(r"\ForEach"))
+            body, pos = parse_braced(text, next_pos)
+            lines.append(f"{prefix}1. **For each** {_clean_algorithm_fragment(condition)}:")
+            lines.extend(_algorithm_sequence(body, indent + 1))
+            continue
+
         for command, label in ((r"\For", "For"), (r"\While", "While"), (r"\If", "If")):
             if text.startswith(command, pos):
                 condition, next_pos = parse_braced(text, pos + len(command))
@@ -223,6 +234,12 @@ def _algorithm_sequence(text: str, indent: int = 0) -> list[str]:
                 matched = True
                 break
         if matched:
+            continue
+
+        if text.startswith(r"\Else", pos):
+            body, pos = parse_braced(text, pos + len(r"\Else"))
+            lines.append(f"{prefix}1. **Else:**")
+            lines.extend(_algorithm_sequence(body, indent + 1))
             continue
 
         if text.startswith(r"\eIf", pos):
@@ -349,7 +366,10 @@ def figure_to_myst(body: str) -> str:
 
 def extract_figures(text: str) -> tuple[str, list[ExtractedStructure]]:
     structures: list[ExtractedStructure] = []
-    pattern = re.compile(r"\\begin\{figure\}(?:\[[^\]]*\])?(.*?)\\end\{figure\}", re.DOTALL)
+    pattern = re.compile(
+        r"\\begin\{figure\*?\}(?:\[[^\]]*\])?(.*?)\\end\{figure\*?\}",
+        re.DOTALL,
+    )
 
     def replace(match: re.Match[str]) -> str:
         markdown = figure_to_myst(match.group(1))

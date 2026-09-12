@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Convert Chapter 5 (Low-precision sampling) from LaTeX to native MyST Markdown."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from chapter_conversion import ChapterConfig, convert_chapter
+from common import tex_path
+
+
+CHAPTER_TITLE = "Low-precision sampling"
+CHAPTER_LABEL = "chap:sampling_methods_low_precision_sampling"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=tex_path("sampling_methods", "low_precision_sampling", "main.tex"),
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("content/sampling_methods/low_precision_sampling.md"),
+        help="Chapter 5 output used by the normal book TOC.",
+    )
+    args = parser.parse_args()
+
+    convert_chapter(
+        ChapterConfig(
+            title=CHAPTER_TITLE,
+            label=CHAPTER_LABEL,
+            input_path=args.input,
+            output_path=args.output,
+            asset_slug="low_precision_sampling",
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
