@@ -284,7 +284,7 @@ with the final-layer output {math}`f(x,\theta)` defining the DNN. The BNN is giv
 
 We now introduce the trace class neural network (TNN) priors, which were first proposed in {cite:t}`sell2023trace`, and differ from standard BNN priors in two fundamental ways. The first is that the prior on the weights and biases depends on the rows and columns, as opposed to standard isotropic weight decay. This is referred to as *width-decay* and it eliminates exchangeability and the associated non-identifiability. The second thing is that nested approximations of the well-defined TNN function-space converge strongly to a non-Gaussian process in the limit of infinite width. This stands in contrast to standard isotropic priors, under which the appropriately rescaled network converges weakly to a Gaussian process {cite:p}`neal1995bayesian,matthews2018gaussian`, so that the infinite-width limit is a kernel method and the compositional structure of the prior is lost. This will be made precise below.
 
-These priors were introduced to mimic Gaussian measure priors {math}`p \sim \mathcal{N}(0,\mathcal{C})` for inverse problems over function-space, for which Gaussian random fields are commonly simulated through the Karhunen-Love expansion
+These priors were introduced to mimic Gaussian measure priors {math}`p \sim \mathcal{N}(0,\mathcal{C})` for inverse problems over function-space, for which Gaussian random fields are commonly simulated through the Karhunen-Loève expansion
 
 ```{math}
 :label: eq:kle

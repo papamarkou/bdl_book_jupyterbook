@@ -2,7 +2,7 @@
 # Low-precision sampling
 
 +++
-When running simulations for a dynamic system on a computer, the impact of round-off errors on number representations (e.g., floating-point representations) can not be naively presumed to be negligible. It has been observed that a large deviation can occur between numerical behavior and the theoretical behaviour {cite:p}`guiheneuf2015dynamical`. In Bayesian literature, the same question arises: how does the rounding error from computer simulation affect the convergence property of a Markov chain? {cite:t}`roberts1998convergence` shows a rather alarming example that a well-behaved Markov chain (with Feller continuity and geometrical ergodicity) becomes transient (i.e., will not converge to any target distribution) after adding an arbitrarily small roundoff error. {cite:t}`hoffmanroundoff` also warned that roundoff errors can severely degrade the performance of the Metropolis-Hastings sampling algorithm. To sum up, a common wisdom for conventional MCMC practice is to utilize high-precision numerical representations to limit the negative impact of roundoff errors. However, in this chapter, we will embrace the low-precision representations in the era of SG-MCMC samplers.
+When running simulations for a dynamic system on a computer, the impact of round-off errors on number representations (e.g., floating-point representations) can not be naïvely presumed to be negligible. It has been observed that a large deviation can occur between numerical behavior and the theoretical behaviour {cite:p}`guiheneuf2015dynamical`. In Bayesian literature, the same question arises: how does the rounding error from computer simulation affect the convergence property of a Markov chain? {cite:t}`roberts1998convergence` shows a rather alarming example that a well-behaved Markov chain (with Feller continuity and geometrical ergodicity) becomes transient (i.e., will not converge to any target distribution) after adding an arbitrarily small roundoff error. {cite:t}`hoffmanroundoff` also warned that roundoff errors can severely degrade the performance of the Metropolis-Hastings sampling algorithm. To sum up, a common wisdom for conventional MCMC practice is to utilize high-precision numerical representations to limit the negative impact of roundoff errors. However, in this chapter, we will embrace the low-precision representations in the era of SG-MCMC samplers.
 
 +++
 ## Low-Precision Deep Neural Network
@@ -225,7 +225,7 @@ One possible remedy is to choose a stepsize that minimizes the right handed side
 One key reason causing the divergence of SGLDLP-L is that the *variance* of each dimension of {math}`\theta_{k+1}` becomes larger due to using low-precision gradient accumulators. More precisely, given the stochastic gradient {math}`\nabla\tilde{U}`, the update of full-precision SGLD is equivalent to sampling from a Gaussian distribution
 
 ```{math}
-\theta_{k+1,i}\sim\mathcal{N}\left(\theta_{k,i} - \alpha  \nabla\tilde{U}(\theta_{k})_i, 2\alpha \right), \text{for each dimension } i=1,\cdots, P.
+\theta_{k+1,i}\sim\mathcal{N}\left(\theta_{k,i} - \alpha  \nabla\tilde{U}(\theta_{k})_i, 2\alpha \right), \text{for each dimension } i=1,\ldots, P.
 ```
 
 Note that both the weight quantizer {math}`Q_W` and the gradient quantizer {math}`Q_G` are unbiased stochastic rounding, hence SGLDLP-L satisfies
@@ -248,7 +248,7 @@ which shares the same mean as {math}`\theta_{k+1}` in full-precision. But on the
 \end{align*}
 ```
 
-for some {math}`\chi_{k+1,i}\in [0,1]`. This result shows that the variance of the SGLDLP-L update is larger than the ideal variance value {math}`2\alpha`. Figure [](#ch5:fig:gaussian) also reflects this, as the naive SGLDLP-L estimates the mean correctly but the variance wrongly.
+for some {math}`\chi_{k+1,i}\in [0,1]`. This result shows that the variance of the SGLDLP-L update is larger than the ideal variance value {math}`2\alpha`. Figure [](#ch5:fig:gaussian) also reflects this, as the naïve SGLDLP-L estimates the mean correctly but the variance wrongly.
 
 To correct the inflated variance and enable SGLD with low-precision gradient accumulators, {cite:t}`zhang2022low` introduced a new variance-corrected quantization function {math}`Q^{\text{vc}}`. The main idea of {math}`Q^{\text{vc}}` is to directly sample from the discrete low-precision space instead of quantizing a real-valued Gaussian sample. To begin with, if we want a sample over {math}`\{\Delta_W,-\Delta_W,0\}` with mean {math}`\mu\ge 0` and variance {math}`v\le\Delta^2_W /4`, we could sample it with the following categorical distribution,
 
@@ -617,7 +617,7 @@ To reduce the computation cost, the SGHMC with low-precision gradient accumulato
 \end{align}
 ```
 
-Similar to SGLDLP-L, SGHMCLP-L has intrinsic flaws. It directly quantizes the weights after each update, hence a small stepsize update is often quantized to zero update of {math}`\theta` and {math}`v`, resulting in the sample distribution converging to a Dirac distribution at the initial point. In such cases, ensuring convergence becomes challenging. {cite:t}`wang2023enhancing` investigated the convergence of SGHMCLP-L under 2-Wasserstein distance, exhibiting that the naive SGHMCLP-L has a much worse convergence upper bound than SGHMCLP-F. To remedy this, we adapt the variance correction quantizer ([](#ch5:alg:vc)) to SGHMCLP-L. Let {math}`\mathbb{V}_{v}^{hmc} = u(1-e^{-2\gamma\eta})` and {math}`\mathbb{V}_{\theta}^{hmc} = u\gamma^{-2}(2\gamma\eta+4e^{-\gamma\eta}-e^{-2\gamma\eta}-3)`, which are the desired variances induced from the underdamped Langevin dynamics [](#ch5:eq:sghmc). The VC SGHMCLP-L can be done as follows:
+Similar to SGLDLP-L, SGHMCLP-L has intrinsic flaws. It directly quantizes the weights after each update, hence a small stepsize update is often quantized to zero update of {math}`\theta` and {math}`v`, resulting in the sample distribution converging to a Dirac distribution at the initial point. In such cases, ensuring convergence becomes challenging. {cite:t}`wang2023enhancing` investigated the convergence of SGHMCLP-L under 2-Wasserstein distance, exhibiting that the naïve SGHMCLP-L has a much worse convergence upper bound than SGHMCLP-F. To remedy this, we adapt the variance correction quantizer ([](#ch5:alg:vc)) to SGHMCLP-L. Let {math}`\mathbb{V}_{v}^{hmc} = u(1-e^{-2\gamma\eta})` and {math}`\mathbb{V}_{\theta}^{hmc} = u\gamma^{-2}(2\gamma\eta+4e^{-\gamma\eta}-e^{-2\gamma\eta}-3)`, which are the desired variances induced from the underdamped Langevin dynamics [](#ch5:eq:sghmc). The VC SGHMCLP-L can be done as follows:
 
 ```{math}
 :label: ch5:eq:vcsghmc
@@ -656,7 +656,7 @@ K \leq \frac{\rho}{\eta}\log\left\{\frac{36\left(\frac{P}{m}+\mathcal{D}^2\right
 :::
 
 +++
-[](#ch5:theorem:vchmc-convex) shows that the variance-corrected quantization function resolves the overdispersion problem for the naive SGHMCLP-L algorithm. The {math}`W_2` distance between the sample distribution and target distribution can be arbitrarily close to {math}`\tilde{\mathcal{O}}(\sqrt{\Delta})`. This convergence rate of VC SGHMCLP-L is the same as that of VC SGLDLP-L (see the discussion after [](#ch5:thm:correction)).
+[](#ch5:theorem:vchmc-convex) shows that the variance-corrected quantization function resolves the overdispersion problem for the naïve SGHMCLP-L algorithm. The {math}`W_2` distance between the sample distribution and target distribution can be arbitrarily close to {math}`\tilde{\mathcal{O}}(\sqrt{\Delta})`. This convergence rate of VC SGHMCLP-L is the same as that of VC SGLDLP-L (see the discussion after [](#ch5:thm:correction)).
 
 ## Advantage of LP Stochastic Gradient HMC under Non-Convexity
 
