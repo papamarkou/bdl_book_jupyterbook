@@ -18,7 +18,7 @@ def test_tex_text_accents_support_braced_and_unbraced_forms() -> None:
 
 
 def test_chapter_normalization_applies_shared_text_accents() -> None:
-    source = r'A na\"ive approach and M\"{u}ller\'s method.'
+    source = r"A na\"ive approach and M\"{u}ller's method."
     assert normalize_latex(source) == "A naïve approach and Müller's method."
 
 
