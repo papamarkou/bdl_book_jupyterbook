@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
+from text_normalize import normalize_tex_text_accents
+
 
 COMPOUND_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (r"\network(\inputs,\params)", r"f(x,\theta)"),
@@ -452,6 +454,7 @@ def normalize_typography(text: str) -> str:
 def normalize_latex(text: str) -> str:
     """Normalize comments, notation, and non-semantic typography before MyST conversion."""
     text = strip_tex_comments(text)
+    text = normalize_tex_text_accents(text)
     text = normalize_notation(text)
     text = normalize_typography(text)
     return text
